@@ -3,7 +3,8 @@ const APPS_SCRIPT_URL =
 const SHEET_URL =
   "https://docs.google.com/spreadsheets/d/1KCzz2B59PN3IvcyM2_G2uvTi8nA759oV7rUsaXvrcSY/edit?gid=0#gid=0";
 const TOKEN_KEY = "pron_session_token";
-const LOCAL_DB_KEY = "pron_local_database_v1";
+const CLEAN_START_VERSION = "pron-clean-start-20260803-v1";
+const LOCAL_DB_KEY = "pron_local_database_clean_v1";
 const LOCAL_TOKEN_PREFIX = "local-";
 const SUPERADMIN_EMAIL_SHA256 =
   "88e0ce076c34f4b41124bf348680fcaf025f8bda0e1e13ad7339be6d6f359cec";
@@ -88,6 +89,7 @@ const PAYMENT_CLOSED_STATUSES = new Set(["Pagado", "Aprobado"]);
 
 const fallbackData = {
   settings: {
+    cleanStartVersion: CLEAN_START_VERSION,
     language: "es",
     country: "Ecuador",
     currency: "USD",
@@ -95,155 +97,10 @@ const fallbackData = {
     moneyFormat: "$1.250,00",
     dateFormat: "DD/MM/AAAA",
   },
-  projects: [
-    {
-      id: "hotel-manta",
-      name: "Hotel Boutique Manta",
-      type: "Negocio",
-      country: "Ecuador",
-      currency: "USD",
-      timezone: "America/Guayaquil",
-      status: "Negocio activo",
-      budget: 185000,
-      objective: "Apertura controlada con seguimiento financiero semanal.",
-      createdAt: "2026-08-01",
-      updatedAt: "2026-08-03",
-    },
-    {
-      id: "evento-quito",
-      name: "Festival Corporativo Quito",
-      type: "Evento",
-      country: "Ecuador",
-      currency: "USD",
-      timezone: "America/Guayaquil",
-      status: "En revision",
-      budget: 64000,
-      objective: "Planificar proveedores, ingresos por patrocinio y accesos.",
-      createdAt: "2026-08-01",
-      updatedAt: "2026-08-03",
-    },
-    {
-      id: "local-guayaquil",
-      name: "Restaurante ProN Guayaquil",
-      type: "Apertura de local",
-      country: "Ecuador",
-      currency: "USD",
-      timezone: "America/Guayaquil",
-      status: "En funcion",
-      budget: 98000,
-      objective: "Medir punto de equilibrio, inventario critico y personal.",
-      createdAt: "2026-08-01",
-      updatedAt: "2026-08-03",
-    },
-  ],
-  movements: [
-    {
-      id: "mov-001",
-      projectId: "hotel-manta",
-      type: "Inversion",
-      category: "Aporte inicial",
-      concept: "Capital de socios para adecuaciones",
-      amount: 52000,
-      movementDate: "2026-08-01",
-      status: "Aprobado",
-      createdAt: "2026-08-01",
-    },
-    {
-      id: "mov-002",
-      projectId: "hotel-manta",
-      type: "Gasto",
-      category: "Activos",
-      concept: "Equipamiento de habitaciones",
-      amount: 18750,
-      movementDate: "2026-08-02",
-      status: "Registrado",
-      createdAt: "2026-08-02",
-    },
-    {
-      id: "mov-003",
-      projectId: "evento-quito",
-      type: "Ingreso",
-      category: "Patrocinio",
-      concept: "Primer acuerdo de patrocinio",
-      amount: 24000,
-      movementDate: "2026-08-02",
-      status: "Aprobado",
-      createdAt: "2026-08-02",
-    },
-    {
-      id: "mov-004",
-      projectId: "local-guayaquil",
-      type: "Gasto",
-      category: "Personal",
-      concept: "Reserva nomina operativa",
-      amount: 9200,
-      movementDate: "2026-08-03",
-      status: "Registrado",
-      createdAt: "2026-08-03",
-    },
-    {
-      id: "mov-005",
-      projectId: "hotel-manta",
-      type: "Gasto",
-      category: "Pago",
-      concept: "Pago inicial a proveedor operativo",
-      amount: 4200,
-      movementDate: "2026-08-04",
-      status: "Pagado",
-      createdAt: "2026-08-04",
-    },
-    {
-      id: "mov-006",
-      projectId: "hotel-manta",
-      type: "Gasto",
-      category: "Cuentas por pagar",
-      concept: "Factura pendiente de mantenimiento",
-      amount: 1850,
-      movementDate: "2026-08-05",
-      status: "Pendiente",
-      createdAt: "2026-08-05",
-    },
-  ],
-  partners: [
-    {
-      id: "soc-001",
-      projectId: "hotel-manta",
-      name: "Socio fundador A",
-      type: "Socio",
-      contribution: 32000,
-      participation: 42,
-      status: "Activo",
-    },
-    {
-      id: "soc-002",
-      projectId: "local-guayaquil",
-      name: "Inversionista operativo",
-      type: "Inversionista",
-      contribution: 18000,
-      participation: 24,
-      status: "Activo",
-    },
-  ],
-  inventory: [
-    {
-      id: "inv-001",
-      projectId: "local-guayaquil",
-      item: "Mesas de servicio",
-      category: "Activo fijo",
-      quantity: 24,
-      unitCost: 135,
-      status: "Disponible",
-    },
-    {
-      id: "inv-002",
-      projectId: "hotel-manta",
-      item: "Kit lenceria habitacion",
-      category: "Inventario",
-      quantity: 80,
-      unitCost: 26,
-      status: "Controlado",
-    },
-  ],
+  projects: [],
+  movements: [],
+  partners: [],
+  inventory: [],
   users: [
     {
       id: "usr-owner",
@@ -253,25 +110,8 @@ const fallbackData = {
       projectId: null,
       createdAt: "2026-08-03",
     },
-    {
-      id: "usr-guest",
-      name: "Usuario Invitado",
-      role: "Invitado",
-      status: "Activo",
-      projectId: null,
-      createdAt: "2026-08-03",
-    },
   ],
-  audit: [
-    {
-      id: "aud-001",
-      action: "Sistema inicializado",
-      detail: "ProN preparo usuarios iniciales, proyectos base y catalogos.",
-      actorRole: "Superadministrador",
-      projectId: null,
-      createdAt: "2026-08-03",
-    },
-  ],
+  audit: [],
 };
 
 const state = {
@@ -279,7 +119,7 @@ const state = {
   user: null,
   data: loadLocalData(),
   activeTab: "resumen",
-  selectedProjectId: fallbackData.projects[0].id,
+  selectedProjectId: fallbackData.projects[0]?.id || "",
   detailProjectId: "",
   summaryScopeId: SUMMARY_ALL,
   search: "",
@@ -413,6 +253,18 @@ function scopedInventory() {
 
 function currentScopeLabel() {
   return summaryProjectId() ? projectName(summaryProjectId()) : "Todo ProN";
+}
+
+function requireSelectedProject(
+  message = "Crea primero un proyecto para registrar informacion.",
+  projectId = state.selectedProjectId,
+) {
+  if (projectId) {
+    return true;
+  }
+
+  setMessage(message, "warning");
+  return false;
 }
 
 function setActiveView(tabName) {
@@ -642,7 +494,16 @@ function syncLoginInBackground(credentials, syncId) {
 
       const currentProjectId = state.selectedProjectId;
       state.user = dataResult.user || state.user;
-      state.data = normalizeData(dataResult.data);
+      const remoteData = normalizeRemoteData(dataResult.data);
+      if (!remoteData) {
+        state.backend = "ready";
+        saveLocalData();
+        render();
+        updateConnection("Sistema activo", "ok");
+        return;
+      }
+
+      state.data = remoteData;
       state.selectedProjectId = state.data.projects.some((project) => project.id === currentProjectId)
         ? currentProjectId
         : state.data.projects[0]?.id || "";
@@ -698,7 +559,16 @@ async function refreshData() {
 
   try {
     const result = await callBackend("get-data");
-    state.data = normalizeData(result.data);
+    const remoteData = normalizeRemoteData(result.data);
+    if (!remoteData) {
+      state.backend = "ready";
+      setMessage("Panel limpio listo.");
+      updateConnection("Sistema activo", "ok");
+      render();
+      return;
+    }
+
+    state.data = remoteData;
     state.backend = "ready";
     setMessage("Informacion actualizada.");
     updateConnection("Sistema activo", "ok");
@@ -744,7 +614,10 @@ async function resumeSession() {
       role: "Superadministrador",
       access: "Completo",
     };
-    state.data = normalizeData(result.data);
+    const remoteData = normalizeRemoteData(result.data);
+    if (remoteData) {
+      state.data = remoteData;
+    }
     state.backend = "ready";
     showDashboard();
     setMessage("Sesion restaurada.");
@@ -773,7 +646,13 @@ async function submitAction(action, payload, successMessage) {
 
   try {
     const result = await callBackend(action, payload);
-    state.data = normalizeData(result.data);
+    const remoteData = normalizeRemoteData(result.data);
+    if (remoteData) {
+      state.data = remoteData;
+    } else {
+      applyLocalAction(action, payload);
+      saveLocalData();
+    }
     state.backend = "ready";
     if (!state.data.projects.some((project) => project.id === state.selectedProjectId)) {
       state.selectedProjectId = state.data.projects[0]?.id || "";
@@ -982,6 +861,14 @@ function normalizeData(data) {
   };
 }
 
+function isCleanStartData(data) {
+  return data?.settings?.cleanStartVersion === CLEAN_START_VERSION;
+}
+
+function normalizeRemoteData(data) {
+  return isCleanStartData(data) ? normalizeData(data) : null;
+}
+
 function filteredProjects() {
   const search = state.search.toLowerCase();
   return scopedProjects().filter((project) =>
@@ -1112,11 +999,15 @@ function renderMetrics() {
 }
 
 function renderProjectSelects() {
-  const options = state.data.projects.map((project) =>
+  const projectOptions = state.data.projects.map((project) =>
     el("option", { value: project.id, text: project.name }),
   );
   const projectSelect = $("#projectSelect");
-  projectSelect.replaceChildren(...options);
+  projectSelect.replaceChildren(
+    ...(projectOptions.length
+      ? projectOptions
+      : [el("option", { value: "", text: "Crea un proyecto" })]),
+  );
   if (!state.data.projects.some((project) => project.id === state.selectedProjectId)) {
     state.selectedProjectId = state.data.projects[0]?.id || "";
   }
@@ -1124,7 +1015,7 @@ function renderProjectSelects() {
 
   const scopeOptions = [
     el("option", { value: SUMMARY_ALL, text: "Todo ProN" }),
-    ...options.map((option) => option.cloneNode(true)),
+    ...projectOptions.map((option) => option.cloneNode(true)),
   ];
   const scopeSelect = $("#summaryScopeSelect");
   scopeSelect.replaceChildren(...scopeOptions);
@@ -1139,7 +1030,7 @@ function renderProjectSelects() {
   const userProjectInput = $("#userProjectInput");
   userProjectInput.replaceChildren(
     el("option", { value: "", text: "Todos los proyectos" }),
-    ...options.map((option) => option.cloneNode(true)),
+    ...projectOptions.map((option) => option.cloneNode(true)),
   );
   userProjectInput.value = state.selectedProjectId;
 }
@@ -2875,6 +2766,9 @@ function bindEvents() {
 
   $("#movementForm").addEventListener("submit", (event) => {
     event.preventDefault();
+    if (!requireSelectedProject()) {
+      return;
+    }
     const data = formData(event.currentTarget);
     submitAction(
       "create-movement",
@@ -2891,12 +2785,16 @@ function bindEvents() {
 
   $("#detailMovementForm").addEventListener("submit", (event) => {
     event.preventDefault();
+    const projectId = state.detailProjectId || state.selectedProjectId;
+    if (!requireSelectedProject("Abre o crea un proyecto para registrar movimientos.", projectId)) {
+      return;
+    }
     const data = formData(event.currentTarget);
     submitAction(
       "create-movement",
       {
         ...data,
-        projectId: state.detailProjectId || state.selectedProjectId,
+        projectId,
         amount: numberValue(data.amount),
       },
       "Movimiento guardado.",
@@ -2948,6 +2846,9 @@ function bindEvents() {
 
   $("#partnerForm").addEventListener("submit", (event) => {
     event.preventDefault();
+    if (!requireSelectedProject("Crea primero un proyecto para vincular socios.")) {
+      return;
+    }
     const data = formData(event.currentTarget);
     submitAction(
       "create-partner",
@@ -2964,12 +2865,17 @@ function bindEvents() {
 
   $("#detailPartnerForm").addEventListener("submit", (event) => {
     event.preventDefault();
+    const projectId = state.detailProjectId || state.selectedProjectId;
+    if (!projectId) {
+      setMessage("Abre o crea un proyecto para vincular socios.", "warning");
+      return;
+    }
     const data = formData(event.currentTarget);
     submitAction(
       "create-partner",
       {
         ...data,
-        projectId: state.detailProjectId || state.selectedProjectId,
+        projectId,
         contribution: numberValue(data.contribution),
         participation: numberValue(data.participation),
       },
@@ -2980,6 +2886,9 @@ function bindEvents() {
 
   $("#inventoryForm").addEventListener("submit", (event) => {
     event.preventDefault();
+    if (!requireSelectedProject("Crea primero un proyecto para registrar inventario.")) {
+      return;
+    }
     const data = formData(event.currentTarget);
     submitAction(
       "create-inventory",
@@ -2996,12 +2905,17 @@ function bindEvents() {
 
   $("#detailInventoryForm").addEventListener("submit", (event) => {
     event.preventDefault();
+    const projectId = state.detailProjectId || state.selectedProjectId;
+    if (!projectId) {
+      setMessage("Abre o crea un proyecto para registrar inventario.", "warning");
+      return;
+    }
     const data = formData(event.currentTarget);
     submitAction(
       "create-inventory",
       {
         ...data,
-        projectId: state.detailProjectId || state.selectedProjectId,
+        projectId,
         quantity: numberValue(data.quantity),
         unitCost: numberValue(data.unitCost),
       },

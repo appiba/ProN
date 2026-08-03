@@ -4,6 +4,7 @@ var CONFIG = {
   TIMEZONE: "America/Guayaquil",
   CURRENCY: "USD",
   COUNTRY: "Ecuador",
+  CLEAN_START_VERSION: "pron-clean-start-20260803-v1",
   SUPERADMIN_EMAIL_SHA256:
     "88e0ce076c34f4b41124bf348680fcaf025f8bda0e1e13ad7339be6d6f359cec",
   PASSWORD_SALT: "pron-apps-script-password-v1",
@@ -479,202 +480,70 @@ function setupWorkbook_() {
     ensureSheet_(sheetName, HEADERS[sheetName]);
   });
 
-  if (sheet_("Settings").getLastRow() <= 1) {
-    appendObject_("Settings", { key: "language", value: "es" });
-    appendObject_("Settings", { key: "country", value: CONFIG.COUNTRY });
-    appendObject_("Settings", { key: "currency", value: CONFIG.CURRENCY });
-    appendObject_("Settings", { key: "timezone", value: CONFIG.TIMEZONE });
-    appendObject_("Settings", { key: "moneyFormat", value: "$1.250,00" });
-    appendObject_("Settings", { key: "dateFormat", value: "DD/MM/AAAA" });
+  if (settingValue_("cleanStartVersion") !== CONFIG.CLEAN_START_VERSION) {
+    resetWorkbookData_();
+    writeDefaultSettings_();
+    seedData_();
+    return;
   }
 
-  if (sheet_("Projects").getLastRow() <= 1) {
+  ensureDefaultSettings_();
+
+  if (sheet_("Users").getLastRow() <= 1) {
     seedData_();
   }
 }
 
 function seedData_() {
-  [
-    {
-      id: "hotel-manta",
-      name: "Hotel Boutique Manta",
-      type: "Negocio",
-      country: CONFIG.COUNTRY,
-      currency: CONFIG.CURRENCY,
-      timezone: CONFIG.TIMEZONE,
-      status: "Negocio activo",
-      budget: 185000,
-      objective: "Apertura controlada con seguimiento financiero semanal.",
-      createdAt: "2026-08-01",
-      updatedAt: "2026-08-03",
-    },
-    {
-      id: "evento-quito",
-      name: "Festival Corporativo Quito",
-      type: "Evento",
-      country: CONFIG.COUNTRY,
-      currency: CONFIG.CURRENCY,
-      timezone: CONFIG.TIMEZONE,
-      status: "En revision",
-      budget: 64000,
-      objective: "Planificar proveedores, ingresos por patrocinio y accesos.",
-      createdAt: "2026-08-01",
-      updatedAt: "2026-08-03",
-    },
-    {
-      id: "local-guayaquil",
-      name: "Restaurante ProN Guayaquil",
-      type: "Apertura de local",
-      country: CONFIG.COUNTRY,
-      currency: CONFIG.CURRENCY,
-      timezone: CONFIG.TIMEZONE,
-      status: "En funcion",
-      budget: 98000,
-      objective: "Medir punto de equilibrio, inventario critico y personal.",
-      createdAt: "2026-08-01",
-      updatedAt: "2026-08-03",
-    },
-  ].forEach(function (item) {
-    appendObject_("Projects", item);
-  });
-
-  [
-    {
-      id: "mov-001",
-      projectId: "hotel-manta",
-      type: "Inversion",
-      category: "Aporte inicial",
-      concept: "Capital de socios para adecuaciones",
-      amount: 52000,
-      movementDate: "2026-08-01",
-      status: "Aprobado",
-      createdAt: "2026-08-01",
-    },
-    {
-      id: "mov-002",
-      projectId: "hotel-manta",
-      type: "Gasto",
-      category: "Activos",
-      concept: "Equipamiento de habitaciones",
-      amount: 18750,
-      movementDate: "2026-08-02",
-      status: "Registrado",
-      createdAt: "2026-08-02",
-    },
-    {
-      id: "mov-003",
-      projectId: "evento-quito",
-      type: "Ingreso",
-      category: "Patrocinio",
-      concept: "Primer acuerdo de patrocinio",
-      amount: 24000,
-      movementDate: "2026-08-02",
-      status: "Aprobado",
-      createdAt: "2026-08-02",
-    },
-    {
-      id: "mov-004",
-      projectId: "local-guayaquil",
-      type: "Gasto",
-      category: "Personal",
-      concept: "Reserva nomina operativa",
-      amount: 9200,
-      movementDate: "2026-08-03",
-      status: "Registrado",
-      createdAt: "2026-08-03",
-    },
-    {
-      id: "mov-005",
-      projectId: "hotel-manta",
-      type: "Gasto",
-      category: "Pago",
-      concept: "Pago inicial a proveedor operativo",
-      amount: 4200,
-      movementDate: "2026-08-04",
-      status: "Pagado",
-      createdAt: "2026-08-04",
-    },
-    {
-      id: "mov-006",
-      projectId: "hotel-manta",
-      type: "Gasto",
-      category: "Cuentas por pagar",
-      concept: "Factura pendiente de mantenimiento",
-      amount: 1850,
-      movementDate: "2026-08-05",
-      status: "Pendiente",
-      createdAt: "2026-08-05",
-    },
-  ].forEach(function (item) {
-    appendObject_("Movements", item);
-  });
-
-  appendObject_("Partners", {
-    id: "soc-001",
-    projectId: "hotel-manta",
-    name: "Socio fundador A",
-    type: "Socio",
-    contribution: 32000,
-    participation: 42,
-    status: "Activo",
-  });
-  appendObject_("Partners", {
-    id: "soc-002",
-    projectId: "local-guayaquil",
-    name: "Inversionista operativo",
-    type: "Inversionista",
-    contribution: 18000,
-    participation: 24,
-    status: "Activo",
-  });
-  appendObject_("Inventory", {
-    id: "inv-001",
-    projectId: "local-guayaquil",
-    item: "Mesas de servicio",
-    category: "Activo fijo",
-    quantity: 24,
-    unitCost: 135,
-    status: "Disponible",
-  });
-  appendObject_("Inventory", {
-    id: "inv-002",
-    projectId: "hotel-manta",
-    item: "Kit lenceria habitacion",
-    category: "Inventario",
-    quantity: 80,
-    unitCost: 26,
-    status: "Controlado",
-  });
   appendObject_("Users", {
     id: "usr-owner",
     name: "Administrador General",
     role: "Superadministrador",
     status: "Activo",
-    emailHash: "",
-    projectId: "",
-    createdAt: "2026-08-03",
-  });
-  appendObject_("Users", {
-    id: "usr-guest",
-    name: "Usuario Invitado",
-    role: "Invitado",
-    status: "Activo",
-    emailHash: "",
-    projectId: "",
-    createdAt: "2026-08-03",
-  });
-  appendObject_("Audit", {
-    id: "aud-001",
-    action: "Sistema inicializado",
-    detail: "ProN preparo usuarios iniciales, proyectos base y catalogos.",
-    actorRole: "Superadministrador",
+    emailHash: CONFIG.SUPERADMIN_EMAIL_SHA256,
     projectId: "",
     createdAt: "2026-08-03",
   });
 }
 
+function resetWorkbookData_() {
+  Object.keys(HEADERS).forEach(function (sheetName) {
+    clearSheetRows_(sheetName);
+  });
+}
+
+function clearSheetRows_(sheetName) {
+  var target = sheet_(sheetName);
+  var lastRow = target.getLastRow();
+
+  if (lastRow <= 1) {
+    return;
+  }
+
+  target.getRange(2, 1, lastRow - 1, target.getMaxColumns()).clearContent();
+}
+
+function writeDefaultSettings_() {
+  appendObject_("Settings", { key: "cleanStartVersion", value: CONFIG.CLEAN_START_VERSION });
+  appendObject_("Settings", { key: "language", value: "es" });
+  appendObject_("Settings", { key: "country", value: CONFIG.COUNTRY });
+  appendObject_("Settings", { key: "currency", value: CONFIG.CURRENCY });
+  appendObject_("Settings", { key: "timezone", value: CONFIG.TIMEZONE });
+  appendObject_("Settings", { key: "moneyFormat", value: "$1.250,00" });
+  appendObject_("Settings", { key: "dateFormat", value: "DD/MM/AAAA" });
+}
+
+function ensureDefaultSettings_() {
+  var current = settings_();
+
+  if (!current.cleanStartVersion) {
+    appendObject_("Settings", { key: "cleanStartVersion", value: CONFIG.CLEAN_START_VERSION });
+  }
+}
+
 function settings_() {
   var settings = {
+    cleanStartVersion: CONFIG.CLEAN_START_VERSION,
     language: "es",
     country: CONFIG.COUNTRY,
     currency: CONFIG.CURRENCY,
@@ -688,6 +557,18 @@ function settings_() {
   });
 
   return settings;
+}
+
+function settingValue_(key) {
+  var rows = readObjects_("Settings");
+
+  for (var index = rows.length - 1; index >= 0; index -= 1) {
+    if (rows[index].key === key) {
+      return rows[index].value;
+    }
+  }
+
+  return "";
 }
 
 function spreadsheet_() {

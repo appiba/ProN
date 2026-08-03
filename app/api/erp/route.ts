@@ -103,6 +103,8 @@ type ActionPayload = {
   status?: string;
 };
 
+const CLEAN_START_VERSION = "pron-clean-start-20260803-v1";
+
 function getDatabase() {
   return (env as { DB?: D1DatabaseLike }).DB;
 }
@@ -185,192 +187,53 @@ async function ensureDatabase(db: D1DatabaseLike) {
       project_id TEXT,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS app_meta (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    )`),
     db.prepare("CREATE INDEX IF NOT EXISTS movements_project_idx ON movements(project_id)"),
     db.prepare("CREATE INDEX IF NOT EXISTS partners_project_idx ON partners(project_id)"),
     db.prepare("CREATE INDEX IF NOT EXISTS inventory_project_idx ON inventory_items(project_id)"),
     db.prepare("CREATE INDEX IF NOT EXISTS audit_project_idx ON audit_log(project_id)"),
   ]);
 
-  const count = await db
-    .prepare("SELECT COUNT(*) AS total FROM projects")
+  const cleanMarker = await db
+    .prepare("SELECT value FROM app_meta WHERE key = ?")
+    .bind("cleanStartVersion")
+    .first<{ value: string }>();
+
+  if (cleanMarker?.value !== CLEAN_START_VERSION) {
+    await db.batch([
+      db.prepare("DELETE FROM audit_log"),
+      db.prepare("DELETE FROM inventory_items"),
+      db.prepare("DELETE FROM partners"),
+      db.prepare("DELETE FROM movements"),
+      db.prepare("DELETE FROM projects"),
+      db.prepare("DELETE FROM users"),
+      db.prepare("DELETE FROM app_meta"),
+    ]);
+    await db
+      .prepare("INSERT INTO app_meta (key, value) VALUES (?, ?)")
+      .bind("cleanStartVersion", CLEAN_START_VERSION)
+      .run();
+  }
+
+  const userCount = await db
+    .prepare("SELECT COUNT(*) AS total FROM users")
     .first<{ total: number }>();
 
-  if (count?.total) {
+  if (userCount?.total) {
     return;
   }
 
-  await db.batch([
-    db
-      .prepare(
-        `INSERT INTO projects
-        (id, name, type, country, currency, timezone, status, budget, objective)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .bind(
-        "hotel-manta",
-        "Hotel Boutique Manta",
-        "Negocio",
-        "Ecuador",
-        "USD",
-        "America/Guayaquil",
-        "Activo",
-        185000,
-        "Apertura controlada con seguimiento financiero semanal.",
-      ),
-    db
-      .prepare(
-        `INSERT INTO projects
-        (id, name, type, country, currency, timezone, status, budget, objective)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .bind(
-        "evento-quito",
-        "Festival Corporativo Quito",
-        "Evento",
-        "Ecuador",
-        "USD",
-        "America/Guayaquil",
-        "En revision",
-        64000,
-        "Planificar proveedores, ingresos por patrocinio y control de accesos.",
-      ),
-    db
-      .prepare(
-        `INSERT INTO projects
-        (id, name, type, country, currency, timezone, status, budget, objective)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .bind(
-        "local-guayaquil",
-        "Restaurante ProN Guayaquil",
-        "Apertura de local",
-        "Ecuador",
-        "USD",
-        "America/Guayaquil",
-        "Activo",
-        98000,
-        "Medir punto de equilibrio, inventario critico y personal base.",
-      ),
-    db
-      .prepare(
-        `INSERT INTO movements
-        (id, project_id, type, category, concept, amount, movement_date, status)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .bind(
-        "mov-001",
-        "hotel-manta",
-        "Inversion",
-        "Aporte inicial",
-        "Capital de socios para adecuaciones",
-        52000,
-        "2026-08-01",
-        "Aprobado",
-      ),
-    db
-      .prepare(
-        `INSERT INTO movements
-        (id, project_id, type, category, concept, amount, movement_date, status)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .bind(
-        "mov-002",
-        "hotel-manta",
-        "Gasto",
-        "Activos",
-        "Equipamiento de habitaciones",
-        18750,
-        "2026-08-02",
-        "Registrado",
-      ),
-    db
-      .prepare(
-        `INSERT INTO movements
-        (id, project_id, type, category, concept, amount, movement_date, status)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .bind(
-        "mov-003",
-        "evento-quito",
-        "Ingreso",
-        "Patrocinio",
-        "Primer acuerdo de patrocinio",
-        24000,
-        "2026-08-02",
-        "Aprobado",
-      ),
-    db
-      .prepare(
-        `INSERT INTO movements
-        (id, project_id, type, category, concept, amount, movement_date, status)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .bind(
-        "mov-004",
-        "local-guayaquil",
-        "Gasto",
-        "Personal",
-        "Reserva nomina operativa",
-        9200,
-        "2026-08-03",
-        "Registrado",
-      ),
-    db
-      .prepare(
-        `INSERT INTO partners
-        (id, project_id, name, type, contribution, participation, status)
-        VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .bind("soc-001", "hotel-manta", "Socio fundador A", "Socio", 32000, 42, "Activo"),
-    db
-      .prepare(
-        `INSERT INTO partners
-        (id, project_id, name, type, contribution, participation, status)
-        VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .bind("soc-002", "local-guayaquil", "Inversionista operativo", "Inversionista", 18000, 24, "Activo"),
-    db
-      .prepare(
-        `INSERT INTO inventory_items
-        (id, project_id, item, category, quantity, unit_cost, status)
-        VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .bind("inv-001", "local-guayaquil", "Mesas de servicio", "Activo fijo", 24, 135, "Disponible"),
-    db
-      .prepare(
-        `INSERT INTO inventory_items
-        (id, project_id, item, category, quantity, unit_cost, status)
-        VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .bind("inv-002", "hotel-manta", "Kit lenceria habitacion", "Inventario", 80, 26, "Controlado"),
-    db
-      .prepare(
-        `INSERT INTO users
-        (id, name, role, status, email_hash, project_id)
-        VALUES (?, ?, ?, ?, ?, ?)`,
-      )
-      .bind("usr-owner", "Administrador General", "Superadministrador", "Activo", null, null),
-    db
-      .prepare(
-        `INSERT INTO users
-        (id, name, role, status, email_hash, project_id)
-        VALUES (?, ?, ?, ?, ?, ?)`,
-      )
-      .bind("usr-guest", "Usuario Invitado", "Invitado", "Activo", null, null),
-    db
-      .prepare(
-        `INSERT INTO audit_log
-        (id, action, detail, actor_role, project_id)
-        VALUES (?, ?, ?, ?, ?)`,
-      )
-      .bind(
-        "aud-001",
-        "Sistema inicializado",
-        "ProN creo usuarios iniciales, proyectos base y catalogos operativos.",
-        "Superadministrador",
-        null,
-      ),
-  ]);
+  await db
+    .prepare(
+      `INSERT INTO users
+      (id, name, role, status, email_hash, project_id)
+      VALUES (?, ?, ?, ?, ?, ?)`,
+    )
+    .bind("usr-owner", "Administrador General", "Superadministrador", "Activo", null, null)
+    .run();
 }
 
 async function loadData(db: D1DatabaseLike) {
@@ -390,6 +253,7 @@ async function loadData(db: D1DatabaseLike) {
 
   return {
     settings: {
+      cleanStartVersion: CLEAN_START_VERSION,
       language: "es",
       country: "Ecuador",
       currency: "USD",

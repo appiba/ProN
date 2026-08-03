@@ -74,6 +74,7 @@ type AuditEntry = {
 
 type ERPData = {
   settings: {
+    cleanStartVersion: string;
     language: string;
     country: string;
     currency: string;
@@ -99,8 +100,11 @@ type TabId =
   | "reportes"
   | "configuracion";
 
+const CLEAN_START_VERSION = "pron-clean-start-20260803-v1";
+
 const fallbackData: ERPData = {
   settings: {
+    cleanStartVersion: CLEAN_START_VERSION,
     language: "es",
     country: "Ecuador",
     currency: "USD",
@@ -108,133 +112,10 @@ const fallbackData: ERPData = {
     moneyFormat: "$1.250,00",
     dateFormat: "DD/MM/AAAA",
   },
-  projects: [
-    {
-      id: "hotel-manta",
-      name: "Hotel Boutique Manta",
-      type: "Negocio",
-      country: "Ecuador",
-      currency: "USD",
-      timezone: "America/Guayaquil",
-      status: "Negocio activo",
-      budget: 185000,
-      objective: "Apertura controlada con seguimiento financiero semanal.",
-      createdAt: "2026-08-01",
-      updatedAt: "2026-08-03",
-    },
-    {
-      id: "evento-quito",
-      name: "Festival Corporativo Quito",
-      type: "Evento",
-      country: "Ecuador",
-      currency: "USD",
-      timezone: "America/Guayaquil",
-      status: "En revision",
-      budget: 64000,
-      objective: "Planificar proveedores, ingresos por patrocinio y accesos.",
-      createdAt: "2026-08-01",
-      updatedAt: "2026-08-03",
-    },
-    {
-      id: "local-guayaquil",
-      name: "Restaurante ProN Guayaquil",
-      type: "Apertura de local",
-      country: "Ecuador",
-      currency: "USD",
-      timezone: "America/Guayaquil",
-      status: "En funcion",
-      budget: 98000,
-      objective: "Medir punto de equilibrio, inventario critico y personal.",
-      createdAt: "2026-08-01",
-      updatedAt: "2026-08-03",
-    },
-  ],
-  movements: [
-    {
-      id: "mov-001",
-      projectId: "hotel-manta",
-      type: "Inversion",
-      category: "Aporte inicial",
-      concept: "Capital de socios para adecuaciones",
-      amount: 52000,
-      movementDate: "2026-08-01",
-      status: "Aprobado",
-      createdAt: "2026-08-01",
-    },
-    {
-      id: "mov-002",
-      projectId: "hotel-manta",
-      type: "Gasto",
-      category: "Activos",
-      concept: "Equipamiento de habitaciones",
-      amount: 18750,
-      movementDate: "2026-08-02",
-      status: "Registrado",
-      createdAt: "2026-08-02",
-    },
-    {
-      id: "mov-003",
-      projectId: "evento-quito",
-      type: "Ingreso",
-      category: "Patrocinio",
-      concept: "Primer acuerdo de patrocinio",
-      amount: 24000,
-      movementDate: "2026-08-02",
-      status: "Aprobado",
-      createdAt: "2026-08-02",
-    },
-    {
-      id: "mov-004",
-      projectId: "local-guayaquil",
-      type: "Gasto",
-      category: "Personal",
-      concept: "Reserva nomina operativa",
-      amount: 9200,
-      movementDate: "2026-08-03",
-      status: "Registrado",
-      createdAt: "2026-08-03",
-    },
-  ],
-  partners: [
-    {
-      id: "soc-001",
-      projectId: "hotel-manta",
-      name: "Socio fundador A",
-      type: "Socio",
-      contribution: 32000,
-      participation: 42,
-      status: "Activo",
-    },
-    {
-      id: "soc-002",
-      projectId: "local-guayaquil",
-      name: "Inversionista operativo",
-      type: "Inversionista",
-      contribution: 18000,
-      participation: 24,
-      status: "Activo",
-    },
-  ],
-  inventory: [
-    {
-      id: "inv-001",
-      projectId: "local-guayaquil",
-      item: "Mesas de servicio",
-      category: "Activo fijo",
-      quantity: 24,
-      unitCost: 135,
-      status: "Disponible",
-    },
-    {
-      id: "inv-002",
-      projectId: "hotel-manta",
-      item: "Kit lenceria habitacion",
-      category: "Inventario",
-      quantity: 80,
-      unitCost: 26,
-      status: "Controlado",
-    },
-  ],
+  projects: [],
+  movements: [],
+  partners: [],
+  inventory: [],
   users: [
     {
       id: "usr-owner",
@@ -244,25 +125,8 @@ const fallbackData: ERPData = {
       projectId: null,
       createdAt: "2026-08-03",
     },
-    {
-      id: "usr-guest",
-      name: "Usuario Invitado",
-      role: "Invitado",
-      status: "Activo",
-      projectId: null,
-      createdAt: "2026-08-03",
-    },
   ],
-  audit: [
-    {
-      id: "aud-001",
-      action: "Sistema inicializado",
-      detail: "ProN preparo usuarios iniciales, proyectos base y catalogos.",
-      actorRole: "Superadministrador",
-      projectId: null,
-      createdAt: "2026-08-03",
-    },
-  ],
+  audit: [],
 };
 
 const tabs: { id: TabId; label: string; short: string }[] = [

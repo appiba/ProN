@@ -89,6 +89,10 @@ test("keeps private bootstrap credentials out of app source", async () => {
   assert.doesNotMatch(source, oldBrandPattern);
   assert.doesNotMatch(source, new RegExp(escapeRegExp(privateEmail), "i"));
   assert.doesNotMatch(source, new RegExp(escapeRegExp(privatePassword)));
+  assert.doesNotMatch(
+    source,
+    /Hotel Boutique Manta|Festival Corporativo Quito|Restaurante ProN Guayaquil|hotel-manta|evento-quito|local-guayaquil|mov-001|usr-guest/i,
+  );
 });
 
 test("ships the GitHub Pages and Apps Script integration", async () => {
@@ -103,6 +107,9 @@ test("ships the GitHub Pages and Apps Script integration", async () => {
   assert.match(pages, /AKfycbzf1TjxIBrBNJ6fTY5NNciAlWCl0PFKYgCpRXcdRg2S9aYKjMqDxeVCgC1JlcZet8iLNA/);
   assert.match(pages, /function jsonpRequest/);
   assert.match(pages, /LOCAL_DB_KEY/);
+  assert.match(pages, /pron_local_database_clean_v1/);
+  assert.match(pages, /CLEAN_START_VERSION/);
+  assert.match(pages, /normalizeRemoteData/);
   assert.match(index, /summaryScopeSelect/);
   assert.match(index, /financePie/);
   assert.match(index, /budgetPie/);
@@ -144,6 +151,8 @@ test("ships the GitHub Pages and Apps Script integration", async () => {
   assert.match(pages, /MOVEMENT_CATEGORIES/);
   assert.match(appsScript, /function doGet/);
   assert.match(appsScript, /function doPost/);
+  assert.match(appsScript, /CLEAN_START_VERSION/);
+  assert.match(appsScript, /resetWorkbookData_/);
   assert.match(appsScript, /function parseGetPayload_/);
   assert.match(appsScript, /ContentService\.MimeType\.JAVASCRIPT/);
   assert.match(appsScript, /deleteProject_/);
