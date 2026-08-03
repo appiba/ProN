@@ -58,7 +58,18 @@ var HEADERS = {
     "unitCost",
     "status",
   ],
-  Users: ["id", "name", "role", "status", "emailHash", "projectId", "createdAt"],
+  Users: [
+    "id",
+    "name",
+    "role",
+    "status",
+    "emailHash",
+    "projectId",
+    "createdAt",
+    "username",
+    "loginHash",
+    "passwordHash",
+  ],
   Audit: ["id", "action", "detail", "actorRole", "projectId", "createdAt"],
   Sessions: ["id", "tokenHash", "status", "expiresAt", "createdAt"],
 };
@@ -171,14 +182,36 @@ function setupProN() {
 function login_(payload) {
   var emailHash =
     text_(payload.emailHash) || sha256Hex_(text_(payload.email).toLowerCase());
+  var loginHash =
+    text_(payload.loginHash) || emailHash;
   var passwordHash =
     text_(payload.passwordHash) ||
     sha256Hex_(text_(payload.password) + ":" + CONFIG.PASSWORD_SALT);
 
   if (
-    emailHash !== CONFIG.SUPERADMIN_EMAIL_SHA256 ||
-    passwordHash !== CONFIG.SUPERADMIN_PASSWORD_SHA256
+    emailHash === CONFIG.SUPERADMIN_EMAIL_SHA256 &&
+    passwordHash === CONFIG.SUPERADMIN_PASSWORD_SHA256
   ) {
+    var ownerToken = createToken_(payload.remember === true, superadmin_());
+    appendObject_("Audit", {
+      id: newId_("aud"),
+      action: "Inicio de sesion",
+      detail: "Superadministrador ingreso al panel.",
+      actorRole: "Superadministrador",
+      projectId: "",
+      createdAt: now_(),
+    });
+
+    return {
+      ok: true,
+      token: ownerToken,
+      user: superadmin_(),
+    };
+  }
+
+  var appUser = userByCredentials_(loginHash, passwordHash);
+
+  if (!appUser) {
     appendObject_("Audit", {
       id: newId_("aud"),
       action: "Inicio de sesion rechazado",
@@ -190,21 +223,58 @@ function login_(payload) {
     throw new Error("Credenciales invalidas.");
   }
 
-  var token = createToken_(payload.remember === true);
+  var userProfile = userProfile_(appUser);
+  var userToken = createToken_(payload.remember === true, userProfile);
   appendObject_("Audit", {
     id: newId_("aud"),
     action: "Inicio de sesion",
-    detail: "Superadministrador ingreso al panel.",
-    actorRole: "Superadministrador",
-    projectId: "",
+    detail: appUser.name + " ingreso al panel.",
+    actorRole: appUser.role || "Usuario",
+    projectId: appUser.projectId || "",
     createdAt: now_(),
   });
 
   return {
     ok: true,
-    token: token,
-    user: superadmin_(),
+    token: userToken,
+    user: userProfile,
   };
+}
+
+function userByCredentials_(loginHash, passwordHash) {
+  var rows = readObjects_("Users");
+
+  for (var index = 0; index < rows.length; index += 1) {
+    if (
+      rows[index].status === "Activo" &&
+      rows[index].role !== "Superadministrador" &&
+      rows[index].loginHash === loginHash &&
+      rows[index].passwordHash === passwordHash
+    ) {
+      return rows[index];
+    }
+  }
+
+  return null;
+}
+
+function userProfile_(row) {
+  return {
+    id: row.id,
+    name: row.name,
+    username: row.username,
+    role: row.role || "Invitado",
+    access: row.projectId ? projectNameById_(row.projectId) : "Todos los proyectos",
+    projectId: row.projectId || null,
+  };
+}
+
+function existingLoginHash_(loginHash) {
+  var rows = readObjects_("Users");
+
+  return rows.some(function (row) {
+    return row.loginHash === loginHash || row.emailHash === loginHash;
+  });
 }
 
 function createProject_(payload) {
@@ -297,23 +367,32 @@ function createInventory_(payload) {
 
 function createUser_(payload) {
   var name = text_(payload.name);
-  var email = text_(payload.email);
+  var username = text_(payload.username).toLowerCase();
+  var loginHash = text_(payload.loginHash);
+  var passwordHash = text_(payload.passwordHash);
   var role = text_(payload.role, "Invitado");
 
-  if (!name || !email) {
-    throw new Error("Nombre y correo de invitacion son obligatorios.");
+  if (!name || !username || !loginHash || !passwordHash) {
+    throw new Error("Nombre, usuario y clave son obligatorios.");
+  }
+
+  if (existingLoginHash_(loginHash)) {
+    throw new Error("Ese usuario ya existe.");
   }
 
   appendObject_("Users", {
     id: newId_("usr"),
     name: name,
     role: role,
-    status: "Invitado",
-    emailHash: sha256Hex_(email.toLowerCase()),
+    status: "Activo",
+    emailHash: loginHash,
     projectId: text_(payload.projectId),
     createdAt: today_(),
+    username: username,
+    loginHash: loginHash,
+    passwordHash: passwordHash,
   });
-  audit_("Usuario invitado", name + " fue agregado como " + role + ".", "");
+  audit_("Usuario creado", name + " fue creado como " + role + ".", text_(payload.projectId));
 }
 
 function updateProjectStatus_(payload) {
@@ -452,6 +531,7 @@ function loadData_() {
       return {
         id: row.id,
         name: row.name,
+        username: row.username || "",
         role: row.role,
         status: row.status,
         projectId: row.projectId || null,
@@ -503,6 +583,9 @@ function seedData_() {
     emailHash: CONFIG.SUPERADMIN_EMAIL_SHA256,
     projectId: "",
     createdAt: "2026-08-03",
+    username: "superadmin",
+    loginHash: CONFIG.SUPERADMIN_EMAIL_SHA256,
+    passwordHash: "",
   });
 }
 
@@ -699,11 +782,16 @@ function projectNameById_(projectId) {
   return projectId;
 }
 
-function createToken_(remember) {
+function createToken_(remember, user) {
   var maxAge = remember ? 30 * 24 * 60 * 60 * 1000 : 8 * 60 * 60 * 1000;
+  var profile = user || superadmin_();
   var payload = base64Url_(JSON.stringify({
-    sub: "superadmin",
-    role: "Superadministrador",
+    sub: profile.id || "superadmin",
+    name: profile.name,
+    username: profile.username || "",
+    role: profile.role || "Invitado",
+    access: profile.access || "",
+    projectId: profile.projectId || null,
     exp: Date.now() + maxAge,
   }));
   var signature = hmacHex_(payload, CONFIG.SESSION_SECRET);
@@ -735,23 +823,28 @@ function requireSession_(token) {
   }
 
   var session = JSON.parse(base64UrlDecode_(parts[0]));
-  if (
-    session.sub !== "superadmin" ||
-    session.role !== "Superadministrador" ||
-    !session.exp ||
-    session.exp < Date.now()
-  ) {
+  if (!session.sub || !session.role || !session.exp || session.exp < Date.now()) {
     throw new Error("Sesion expirada.");
   }
 
-  return superadmin_();
+  return {
+    id: session.sub,
+    name: session.name || "Usuario ProN",
+    username: session.username || "",
+    role: session.role,
+    access: session.access || "",
+    projectId: session.projectId || null,
+  };
 }
 
 function superadmin_() {
   return {
+    id: "superadmin",
     name: "Administrador General",
+    username: "superadmin",
     role: "Superadministrador",
     access: "Completo",
+    projectId: null,
   };
 }
 

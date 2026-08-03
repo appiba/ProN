@@ -57,6 +57,7 @@ type InventoryItem = {
 type AppUser = {
   id: string;
   name: string;
+  username?: string;
   role: string;
   status: string;
   projectId: string | null;
@@ -267,7 +268,8 @@ export default function ProNApp() {
   });
   const [userForm, setUserForm] = useState({
     name: "",
-    email: "",
+    username: "",
+    password: "",
     role: "Administrador de proyecto",
     projectId: fallbackData.projects[0]?.id ?? "",
   });
@@ -579,8 +581,9 @@ export default function ProNApp() {
           {
             id: localId("usr"),
             name: userForm.name,
+            username: userForm.username,
             role: userForm.role,
-            status: "Invitado",
+            status: "Activo",
             projectId: userForm.projectId || null,
             createdAt: today(),
           },
@@ -590,7 +593,8 @@ export default function ProNApp() {
     );
     setUserForm({
       name: "",
-      email: "",
+      username: "",
+      password: "",
       role: "Administrador de proyecto",
       projectId: selectedProjectId,
     });
@@ -799,10 +803,10 @@ export default function ProNApp() {
             <button
               type="button"
               onClick={() =>
-                setLoginError("Las cuentas nuevas se crean solo mediante invitacion.")
+                setLoginError("El superadministrador crea el usuario, la clave y el acceso.")
               }
             >
-              Crear cuenta por invitacion
+              Solicitar acceso
             </button>
           </div>
         </section>
@@ -1279,7 +1283,7 @@ export default function ProNApp() {
         {activeTab === "usuarios" ? (
           <section className="content-grid">
             <article className="panel">
-              <h3>Invitar usuario</h3>
+              <h3>Crear usuario</h3>
               <form className="stack-form" onSubmit={createUser}>
                 <input
                   value={userForm.name}
@@ -1290,12 +1294,20 @@ export default function ProNApp() {
                   required
                 />
                 <input
-                  type="email"
-                  value={userForm.email}
+                  value={userForm.username}
                   onChange={(event) =>
-                    setUserForm((current) => ({ ...current, email: event.target.value }))
+                    setUserForm((current) => ({ ...current, username: event.target.value }))
                   }
-                  placeholder="Correo de invitacion"
+                  placeholder="Usuario de acceso"
+                  required
+                />
+                <input
+                  type="password"
+                  value={userForm.password}
+                  onChange={(event) =>
+                    setUserForm((current) => ({ ...current, password: event.target.value }))
+                  }
+                  placeholder="Clave de acceso"
                   required
                 />
                 <select
@@ -1324,7 +1336,7 @@ export default function ProNApp() {
                   ))}
                 </select>
                 <button className="primary-button" disabled={saving} type="submit">
-                  Enviar invitacion
+                  Crear usuario
                 </button>
               </form>
             </article>
@@ -1344,8 +1356,9 @@ export default function ProNApp() {
                   <thead>
                     <tr>
                       <th>Usuario</th>
+                      <th>Login</th>
                       <th>Rol</th>
-                      <th>Proyecto</th>
+                      <th>Acceso</th>
                       <th>Estado</th>
                     </tr>
                   </thead>
@@ -1353,6 +1366,7 @@ export default function ProNApp() {
                     {data.users.map((appUser) => (
                       <tr key={appUser.id}>
                         <td>{appUser.name}</td>
+                        <td>{appUser.username ?? ""}</td>
                         <td>{appUser.role}</td>
                         <td>{projectName(data, appUser.projectId)}</td>
                         <td>{appUser.status}</td>
@@ -1431,7 +1445,7 @@ export default function ProNApp() {
                 <li>Sesion con cookie HttpOnly.</li>
                 <li>Credenciales iniciales sin texto visible.</li>
                 <li>Bloqueo temporal por intentos fallidos.</li>
-                <li>Usuarios nuevos solo por invitacion.</li>
+                <li>Usuarios nuevos creados con usuario, clave y acceso asignado.</li>
               </ul>
             </article>
           </section>

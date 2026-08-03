@@ -66,6 +66,7 @@ type InventoryRow = {
 type UserRow = {
   id: string;
   name: string;
+  username: string | null;
   role: string;
   status: string;
   project_id: string | null;
@@ -97,6 +98,10 @@ type ActionPayload = {
   movementDate?: string;
   role?: string;
   email?: string;
+  username?: string;
+  password?: string;
+  loginHash?: string;
+  passwordHash?: string;
   item?: string;
   quantity?: number;
   unitCost?: number;
@@ -104,6 +109,7 @@ type ActionPayload = {
 };
 
 const CLEAN_START_VERSION = "pron-clean-start-20260803-v1";
+const USER_PASSWORD_SALT = "pron-user-password-v1";
 
 function getDatabase() {
   return (env as { DB?: D1DatabaseLike }).DB;
@@ -176,6 +182,9 @@ async function ensureDatabase(db: D1DatabaseLike) {
       role TEXT NOT NULL,
       status TEXT NOT NULL DEFAULT 'Activo',
       email_hash TEXT,
+      username TEXT,
+      login_hash TEXT,
+      password_hash TEXT,
       project_id TEXT,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     )`),
@@ -196,6 +205,8 @@ async function ensureDatabase(db: D1DatabaseLike) {
     db.prepare("CREATE INDEX IF NOT EXISTS inventory_project_idx ON inventory_items(project_id)"),
     db.prepare("CREATE INDEX IF NOT EXISTS audit_project_idx ON audit_log(project_id)"),
   ]);
+
+  await ensureUserColumns(db);
 
   const cleanMarker = await db
     .prepare("SELECT value FROM app_meta WHERE key = ?")
@@ -229,11 +240,27 @@ async function ensureDatabase(db: D1DatabaseLike) {
   await db
     .prepare(
       `INSERT INTO users
-      (id, name, role, status, email_hash, project_id)
-      VALUES (?, ?, ?, ?, ?, ?)`,
+      (id, name, role, status, email_hash, username, login_hash, password_hash, project_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
-    .bind("usr-owner", "Administrador General", "Superadministrador", "Activo", null, null)
+    .bind("usr-owner", "Administrador General", "Superadministrador", "Activo", null, "superadmin", null, null, null)
     .run();
+}
+
+async function ensureUserColumns(db: D1DatabaseLike) {
+  const columns = [
+    ["username", "TEXT"],
+    ["login_hash", "TEXT"],
+    ["password_hash", "TEXT"],
+  ];
+
+  for (const [column, definition] of columns) {
+    try {
+      await db.prepare(`ALTER TABLE users ADD COLUMN ${column} ${definition}`).run();
+    } catch {
+      // Column already exists in an initialized database.
+    }
+  }
 }
 
 async function loadData(db: D1DatabaseLike) {
@@ -247,7 +274,7 @@ async function loadData(db: D1DatabaseLike) {
         .all<MovementRow>(),
       db.prepare("SELECT * FROM partners ORDER BY name").all<PartnerRow>(),
       db.prepare("SELECT * FROM inventory_items ORDER BY item").all<InventoryRow>(),
-      db.prepare("SELECT id, name, role, status, project_id, created_at FROM users ORDER BY created_at DESC").all<UserRow>(),
+      db.prepare("SELECT id, name, username, role, status, project_id, created_at FROM users ORDER BY created_at DESC").all<UserRow>(),
       db.prepare("SELECT * FROM audit_log ORDER BY created_at DESC LIMIT 30").all<AuditRow>(),
     ]);
 
@@ -311,6 +338,7 @@ async function loadData(db: D1DatabaseLike) {
       users.results?.map((user) => ({
         id: user.id,
         name: user.name,
+        username: user.username ?? "",
         role: user.role,
         status: user.status,
         projectId: user.project_id,
@@ -449,28 +477,36 @@ export async function POST(request: Request) {
     case "create-user": {
       const name = textValue(payload.name);
       const role = textValue(payload.role, "Invitado");
-      const email = textValue(payload.email);
+      const username = textValue(payload.username).toLowerCase();
+      const loginHash =
+        textValue(payload.loginHash) || (username ? await sha256Hex(username) : "");
+      const passwordHash =
+        textValue(payload.passwordHash) ||
+        (payload.password ? await sha256Hex(`${payload.password}:${USER_PASSWORD_SALT}`) : "");
 
-      if (!name || !email) {
-        return jsonError("Nombre y correo de invitacion son obligatorios.");
+      if (!name || !username || !loginHash || !passwordHash) {
+        return jsonError("Nombre, usuario y clave son obligatorios.");
       }
 
       await db
         .prepare(
           `INSERT INTO users
-          (id, name, role, status, email_hash, project_id)
-          VALUES (?, ?, ?, ?, ?, ?)`,
+          (id, name, role, status, email_hash, username, login_hash, password_hash, project_id)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .bind(
           newId("usr"),
           name,
           role,
-          "Invitado",
-          await sha256Hex(email.toLowerCase()),
+          "Activo",
+          loginHash,
+          username,
+          loginHash,
+          passwordHash,
           textValue(payload.projectId) || null,
         )
         .run();
-      await audit(db, "Usuario invitado", `${name} fue agregado como ${role}.`, null);
+      await audit(db, "Usuario creado", `${name} fue creado como ${role}.`, textValue(payload.projectId) || null);
       break;
     }
     case "create-inventory": {

@@ -24,8 +24,8 @@
 
         <form id="loginForm" class="login-form">
           <label>
-            Correo electronico
-            <input id="emailInput" type="email" autocomplete="username" required />
+            Usuario o correo
+            <input id="emailInput" autocomplete="username" required />
           </label>
           <label>
             Clave
@@ -387,17 +387,18 @@
         <section class="view" data-view="usuarios">
           <div class="grid">
             <article class="panel">
-              <h3>Invitar usuario</h3>
+              <h3>Crear usuario</h3>
               <form id="userForm" class="stack-form">
                 <input name="name" placeholder="Nombre" required />
-                <input name="email" type="email" placeholder="Correo de invitacion" required />
+                <input name="username" autocomplete="off" placeholder="Usuario de acceso" required />
+                <input name="password" type="password" autocomplete="new-password" placeholder="Clave de acceso" required />
                 <select name="role">
                   <option>Administrador de proyecto</option>
                   <option>Administrador financiero</option>
                   <option>Invitado</option>
                 </select>
                 <select id="userProjectInput" name="projectId"></select>
-                <button type="submit">Enviar invitacion</button>
+                <button type="submit">Crear usuario</button>
               </form>
             </article>
             <article class="panel wide">
@@ -407,8 +408,9 @@
                   <thead>
                     <tr>
                       <th>Usuario</th>
+                      <th>Login</th>
                       <th>Rol</th>
-                      <th>Proyecto</th>
+                      <th>Acceso</th>
                       <th>Estado</th>
                       <th>Acciones</th>
                     </tr>
@@ -679,13 +681,14 @@
                 <h3>Usuario del proyecto</h3>
                 <form id="detailUserForm" class="stack-form">
                   <input name="name" placeholder="Nombre" required />
-                  <input name="email" type="email" placeholder="Correo de invitacion" required />
+                  <input name="username" autocomplete="off" placeholder="Usuario de acceso" required />
+                  <input name="password" type="password" autocomplete="new-password" placeholder="Clave de acceso" required />
                   <select name="role">
                     <option>Administrador de proyecto</option>
                     <option>Administrador financiero</option>
                     <option>Invitado</option>
                   </select>
-                  <button type="submit">Enviar invitacion</button>
+                  <button type="submit">Crear usuario</button>
                 </form>
               </article>
 
@@ -740,6 +743,6 @@
       </section>
     </main>
 
-    <script src="pages.js?v=20260803-informe-completo"></script>
+    <script src="pages.js?v=20260803-crear-usuarios"></script>
   </body>
 </html>

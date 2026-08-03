@@ -3,6 +3,7 @@ const APPS_SCRIPT_URL =
 const SHEET_URL =
   "https://docs.google.com/spreadsheets/d/1KCzz2B59PN3IvcyM2_G2uvTi8nA759oV7rUsaXvrcSY/edit?gid=0#gid=0";
 const TOKEN_KEY = "pron_session_token";
+const SESSION_USER_KEY = "pron_session_user";
 const CLEAN_START_VERSION = "pron-clean-start-20260803-v1";
 const LOCAL_DB_KEY = "pron_local_database_clean_v1";
 const LOCAL_TOKEN_PREFIX = "local-";
@@ -11,6 +12,7 @@ const SUPERADMIN_EMAIL_SHA256 =
 const PASSWORD_SALT = "pron-apps-script-password-v1";
 const SUPERADMIN_PASSWORD_SHA256 =
   "105682a7333783a9e62bee3a503321582a8df6b9ca899512c1f8f53c3b59803f";
+const USER_PASSWORD_SALT = "pron-user-password-v1";
 const JSONP_TIMEOUT_MS = 15000;
 const BACKGROUND_SYNC_DELAY_MS = 50;
 const SUMMARY_ALL = "__all__";
@@ -105,6 +107,7 @@ const fallbackData = {
     {
       id: "usr-owner",
       name: "Administrador General",
+      username: "superadmin",
       role: "Superadministrador",
       status: "Activo",
       projectId: null,
@@ -184,6 +187,10 @@ function projectName(projectId) {
   );
 }
 
+function accessName(projectId) {
+  return projectId ? projectName(projectId) : "Todos los proyectos";
+}
+
 function projectById(projectId) {
   return state.data.projects.find((project) => project.id === projectId) || null;
 }
@@ -228,15 +235,38 @@ function summaryProjectId() {
 }
 
 function inSummaryScope(projectId) {
+  const userProjectId = sessionProjectId();
+  if (userProjectId && projectId !== userProjectId) {
+    return false;
+  }
+
   const scopedId = summaryProjectId();
   return !scopedId || projectId === scopedId;
 }
 
+function sessionProjectId() {
+  if (!state.user || state.user.role === "Superadministrador") {
+    return "";
+  }
+
+  return state.user.projectId || "";
+}
+
+function canAccessProject(projectId) {
+  const scopedId = sessionProjectId();
+  return !scopedId || projectId === scopedId;
+}
+
+function accessibleProjects() {
+  return state.data.projects.filter((project) => canAccessProject(project.id));
+}
+
 function scopedProjects() {
   const scopedId = summaryProjectId();
+  const projects = accessibleProjects();
   return scopedId
-    ? state.data.projects.filter((project) => project.id === scopedId)
-    : state.data.projects;
+    ? projects.filter((project) => project.id === scopedId)
+    : projects;
 }
 
 function scopedMovements() {
@@ -253,6 +283,28 @@ function scopedInventory() {
 
 function currentScopeLabel() {
   return summaryProjectId() ? projectName(summaryProjectId()) : "Todo ProN";
+}
+
+function applySessionScope() {
+  const scopedId = sessionProjectId();
+  const projects = accessibleProjects();
+
+  if (scopedId) {
+    state.selectedProjectId = scopedId;
+    state.summaryScopeId = scopedId;
+    return;
+  }
+
+  if (!projects.some((project) => project.id === state.selectedProjectId)) {
+    state.selectedProjectId = projects[0]?.id || "";
+  }
+
+  if (
+    state.summaryScopeId !== SUMMARY_ALL &&
+    !projects.some((project) => project.id === state.summaryScopeId)
+  ) {
+    state.summaryScopeId = SUMMARY_ALL;
+  }
 }
 
 function requireSelectedProject(
@@ -448,22 +500,53 @@ function ownerSession(emailHash) {
     token: `${LOCAL_TOKEN_PREFIX}${emailHash.slice(0, 24)}`,
     user: {
       name: "Administrador General",
+      username: "superadmin",
       role: "Superadministrador",
       access: "Completo",
+      projectId: null,
     },
   };
 }
 
-function enterDashboardNow(emailHash) {
-  const session = ownerSession(emailHash);
+function userSession(user, loginHash) {
+  return {
+    token: `${LOCAL_TOKEN_PREFIX}usr-${loginHash.slice(0, 20)}`,
+    user: {
+      name: user.name,
+      username: user.username,
+      role: user.role || "Invitado",
+      access: user.projectId ? projectName(user.projectId) : "Todos los proyectos",
+      projectId: user.projectId || null,
+    },
+  };
+}
+
+function enterDashboardNow(session) {
   state.token = session.token;
   state.user = session.user;
   sessionStorage.setItem(TOKEN_KEY, session.token);
+  sessionStorage.setItem(SESSION_USER_KEY, JSON.stringify(session.user));
   $("#loginForm").reset();
   $("#rememberInput").checked = true;
   showDashboard();
   setMessage("Panel listo.");
   updateConnection("Sistema activo", "ok");
+}
+
+function localUserByCredentials(loginHash, passwordHash) {
+  return state.data.users.find(
+    (user) =>
+      user.role !== "Superadministrador" &&
+      user.status === "Activo" &&
+      user.loginHash === loginHash &&
+      user.passwordHash === passwordHash,
+  );
+}
+
+function userLoginExists(loginHash) {
+  return state.data.users.some(
+    (user) => user.loginHash === loginHash || user.emailHash === loginHash,
+  );
 }
 
 function syncLoginInBackground(credentials, syncId) {
@@ -473,6 +556,7 @@ function syncLoginInBackground(credentials, syncId) {
         "login",
         {
           emailHash: credentials.emailHash,
+          loginHash: credentials.loginHash,
           passwordHash: credentials.passwordHash,
           remember: credentials.remember,
         },
@@ -486,6 +570,7 @@ function syncLoginInBackground(credentials, syncId) {
       state.token = result.token;
       state.user = result.user || state.user;
       sessionStorage.setItem(TOKEN_KEY, result.token);
+      sessionStorage.setItem(SESSION_USER_KEY, JSON.stringify(state.user));
 
       const dataResult = await callBackend("get-data");
       if (syncId !== state.loginSyncId || !state.user) {
@@ -524,25 +609,67 @@ async function login(event) {
   event.preventDefault();
   setLoginMessage("");
   setBusy(true);
-  const emailHash = await sha256Hex($("#emailInput").value.trim().toLowerCase());
-  const passwordHash = await sha256Hex(`${$("#passwordInput").value}:${PASSWORD_SALT}`);
+  const loginValue = $("#emailInput").value.trim().toLowerCase();
+  const loginHash = await sha256Hex(loginValue);
+  const ownerPasswordHash = await sha256Hex(`${$("#passwordInput").value}:${PASSWORD_SALT}`);
+  const userPasswordHash = await sha256Hex(`${$("#passwordInput").value}:${USER_PASSWORD_SALT}`);
   const remember = $("#rememberInput").checked;
 
   if (
-    emailHash !== SUPERADMIN_EMAIL_SHA256 ||
-    passwordHash !== SUPERADMIN_PASSWORD_SHA256
+    loginHash === SUPERADMIN_EMAIL_SHA256 &&
+    ownerPasswordHash === SUPERADMIN_PASSWORD_SHA256
   ) {
-    setLoginMessage("Credenciales invalidas.");
+    setLoginMessage("Clave correcta. Entrando...");
+    state.loginSyncId += 1;
+    const syncId = state.loginSyncId;
+    enterDashboardNow(ownerSession(loginHash));
+    setBusy(false);
+    syncLoginInBackground({
+      emailHash: loginHash,
+      loginHash,
+      passwordHash: ownerPasswordHash,
+      remember,
+    }, syncId);
+    return;
+  }
+
+  const localUser = localUserByCredentials(loginHash, userPasswordHash);
+  if (localUser) {
+    setLoginMessage("Clave correcta. Entrando...");
+    state.loginSyncId += 1;
+    enterDashboardNow(userSession(localUser, loginHash));
     setBusy(false);
     return;
   }
 
-  setLoginMessage("Clave correcta. Entrando...");
-  state.loginSyncId += 1;
-  const syncId = state.loginSyncId;
-  enterDashboardNow(emailHash);
-  setBusy(false);
-  syncLoginInBackground({ emailHash, passwordHash, remember }, syncId);
+  try {
+    const result = await callBackend(
+      "login",
+      {
+        loginHash,
+        passwordHash: userPasswordHash,
+        remember,
+      },
+      false,
+    );
+    state.token = result.token;
+    state.user = result.user;
+    sessionStorage.setItem(TOKEN_KEY, result.token);
+    sessionStorage.setItem(SESSION_USER_KEY, JSON.stringify(state.user));
+    const dataResult = await callBackend("get-data");
+    const remoteData = normalizeRemoteData(dataResult.data);
+    if (remoteData) {
+      state.data = remoteData;
+      saveLocalData();
+    }
+    $("#loginForm").reset();
+    showDashboard();
+    setMessage("Panel listo.");
+    setBusy(false);
+  } catch {
+    setLoginMessage("Credenciales invalidas.");
+    setBusy(false);
+  }
 }
 
 async function refreshData() {
@@ -595,11 +722,7 @@ async function resumeSession() {
   }
 
   if (isLocalSession()) {
-    state.user = {
-      name: "Administrador General",
-      role: "Superadministrador",
-      access: "Completo",
-    };
+    state.user = loadSessionUser();
     showDashboard();
     setMessage("Panel listo.");
     updateConnection("Sistema activo", "ok");
@@ -611,9 +734,12 @@ async function resumeSession() {
     const result = await callBackend("get-data");
     state.user = result.user || {
       name: "Administrador General",
+      username: "superadmin",
       role: "Superadministrador",
       access: "Completo",
+      projectId: null,
     };
+    sessionStorage.setItem(SESSION_USER_KEY, JSON.stringify(state.user));
     const remoteData = normalizeRemoteData(result.data);
     if (remoteData) {
       state.data = remoteData;
@@ -677,6 +803,20 @@ async function submitAction(action, payload, successMessage) {
 
 function isLocalSession() {
   return state.token.startsWith(LOCAL_TOKEN_PREFIX);
+}
+
+function loadSessionUser() {
+  try {
+    return JSON.parse(sessionStorage.getItem(SESSION_USER_KEY) || "");
+  } catch {
+    return {
+      name: "Administrador General",
+      username: "superadmin",
+      role: "Superadministrador",
+      access: "Completo",
+      projectId: null,
+    };
+  }
 }
 
 function localId(prefix) {
@@ -785,14 +925,17 @@ function applyLocalAction(action, payload) {
       {
         id: localId("usr"),
         name: payload.name,
+        username: payload.username,
+        loginHash: payload.loginHash,
+        passwordHash: payload.passwordHash,
         role: payload.role || "Invitado",
-        status: "Invitado",
+        status: "Activo",
         projectId: payload.projectId || null,
         createdAt: today(),
       },
       ...state.data.users,
     ];
-    addAudit("Usuario invitado", `${payload.name} fue agregado como ${payload.role}.`);
+    addAudit("Usuario creado", `${payload.name} fue creado como ${payload.role}.`, payload.projectId || null);
     return;
   }
 
@@ -960,6 +1103,7 @@ function replaceChildren(selector, children) {
 }
 
 function render() {
+  applySessionScope();
   renderMetrics();
   renderProjectSelects();
   renderCategorySelects();
@@ -999,7 +1143,8 @@ function renderMetrics() {
 }
 
 function renderProjectSelects() {
-  const projectOptions = state.data.projects.map((project) =>
+  const projects = accessibleProjects();
+  const projectOptions = projects.map((project) =>
     el("option", { value: project.id, text: project.name }),
   );
   const projectSelect = $("#projectSelect");
@@ -1008,8 +1153,8 @@ function renderProjectSelects() {
       ? projectOptions
       : [el("option", { value: "", text: "Crea un proyecto" })]),
   );
-  if (!state.data.projects.some((project) => project.id === state.selectedProjectId)) {
-    state.selectedProjectId = state.data.projects[0]?.id || "";
+  if (!projects.some((project) => project.id === state.selectedProjectId)) {
+    state.selectedProjectId = projects[0]?.id || "";
   }
   projectSelect.value = state.selectedProjectId;
 
@@ -1021,7 +1166,7 @@ function renderProjectSelects() {
   scopeSelect.replaceChildren(...scopeOptions);
   if (
     state.summaryScopeId !== SUMMARY_ALL &&
-    !state.data.projects.some((project) => project.id === state.summaryScopeId)
+    !projects.some((project) => project.id === state.summaryScopeId)
   ) {
     state.summaryScopeId = SUMMARY_ALL;
   }
@@ -1565,8 +1710,9 @@ function renderUsers() {
       .map((user) =>
         el("tr", {}, [
           el("td", { text: user.name }),
+          el("td", { text: user.username || "superadmin" }),
           el("td", { text: user.role }),
-          el("td", { text: projectName(user.projectId) }),
+          el("td", { text: accessName(user.projectId) }),
           el("td", { text: user.status }),
           el("td", {}, [
             el("div", { class: "row-actions" }, [
@@ -1916,6 +2062,25 @@ function formData(form) {
   return Object.fromEntries(new FormData(form).entries());
 }
 
+async function buildUserPayload(form, fallbackProjectId = "") {
+  const data = formData(form);
+  const username = String(data.username || "").trim().toLowerCase();
+  const password = String(data.password || "");
+
+  return {
+    name: data.name,
+    username,
+    loginHash: await sha256Hex(username),
+    passwordHash: await sha256Hex(`${password}:${USER_PASSWORD_SALT}`),
+    role: data.role || "Invitado",
+    projectId: data.projectId || fallbackProjectId || null,
+  };
+}
+
+function publicUsers(users) {
+  return users.map(({ emailHash, loginHash, passwordHash, ...user }) => user);
+}
+
 function csvEscape(value) {
   return `"${String(value ?? "").replace(/"/g, '""')}"`;
 }
@@ -2150,6 +2315,7 @@ function downloadPdf(filename, title, content) {
 function logout(message = "Sesion cerrada.") {
   state.loginSyncId += 1;
   sessionStorage.removeItem(TOKEN_KEY);
+  sessionStorage.removeItem(SESSION_USER_KEY);
   state.token = "";
   state.user = null;
   updateConnection("Sistema listo", "checking");
@@ -2498,7 +2664,7 @@ function buildProjectReportLines(analysis) {
     ...reportLines(
       "Usuarios vinculados:",
       analysis.users,
-      (user) => `- ${user.name} | ${user.role} | ${user.status}`,
+      (user) => `- ${user.name} | ${user.username || ""} | ${user.role} | ${user.status}`,
     ),
     "",
     ...reportLines(
@@ -2646,7 +2812,7 @@ function buildReport(projectId = summaryProjectId()) {
     ...reportLines(
       "USUARIOS Y PERMISOS",
       scope.users,
-      (user) => `- ${user.name} | ${user.role} | ${projectName(user.projectId)} | ${user.status}`,
+      (user) => `- ${user.name} | ${user.username || ""} | ${user.role} | ${accessName(user.projectId)} | ${user.status}`,
     ),
     "",
     ...reportLines(
@@ -2951,7 +3117,8 @@ function downloadUserCard(userId) {
     [
       `Nombre: ${user.name}`,
       `Rol: ${user.role}`,
-      `Proyecto: ${projectName(user.projectId)}`,
+      `Usuario: ${user.username || ""}`,
+      `Acceso: ${accessName(user.projectId)}`,
       `Estado: ${user.status}`,
       `Creado: ${user.createdAt}`,
     ].join("\n"),
@@ -2970,7 +3137,7 @@ function downloadJson() {
         movements: scopedMovements(),
         partners: scopedPartners(),
         inventory: scopedInventory(),
-        users: state.data.users.filter((user) => inSummaryScope(user.projectId)),
+        users: publicUsers(state.data.users.filter((user) => inSummaryScope(user.projectId))),
       },
       null,
       2,
@@ -3235,30 +3402,35 @@ function bindEvents() {
     renderCategorySelects();
   });
 
-  $("#userForm").addEventListener("submit", (event) => {
+  $("#userForm").addEventListener("submit", async (event) => {
     event.preventDefault();
-    const data = formData(event.currentTarget);
+    const payload = await buildUserPayload(event.currentTarget, state.selectedProjectId);
+    if (userLoginExists(payload.loginHash)) {
+      setMessage("Ese usuario ya existe. Usa otro usuario de acceso.", "warning");
+      return;
+    }
     submitAction(
       "create-user",
-      {
-        ...data,
-        projectId: data.projectId || state.selectedProjectId,
-      },
-      "Usuario agregado.",
+      payload,
+      "Usuario creado.",
     );
     event.currentTarget.reset();
   });
 
-  $("#detailUserForm").addEventListener("submit", (event) => {
+  $("#detailUserForm").addEventListener("submit", async (event) => {
     event.preventDefault();
-    const data = formData(event.currentTarget);
+    const payload = await buildUserPayload(
+      event.currentTarget,
+      state.detailProjectId || state.selectedProjectId,
+    );
+    if (userLoginExists(payload.loginHash)) {
+      setMessage("Ese usuario ya existe. Usa otro usuario de acceso.", "warning");
+      return;
+    }
     submitAction(
       "create-user",
-      {
-        ...data,
-        projectId: state.detailProjectId || state.selectedProjectId,
-      },
-      "Usuario agregado.",
+      payload,
+      "Usuario creado.",
     );
     event.currentTarget.reset();
   });
