@@ -28,7 +28,7 @@ reconectar con la hoja publicada.
 - Datos iniciales de proyectos, finanzas, socios, inventario, usuarios y auditoria.
 - Separacion de informacion por proyecto.
 - Roles base: Superadministrador, Administrador de proyecto, Administrador financiero e Invitado.
-- Reportes descargables en TXT y CSV.
+- Reportes descargables en PDF, CSV y JSON.
 - Configuracion inicial para Ecuador, USD y zona horaria America/Guayaquil.
 - Persistencia en Google Sheets para GitHub Pages, con estado visible de sincronizacion.
 - D1 declarado para runtime compatible.

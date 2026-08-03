@@ -232,6 +232,7 @@ const state = {
   data: loadLocalData(),
   activeTab: "resumen",
   selectedProjectId: fallbackData.projects[0].id,
+  detailProjectId: "",
   summaryScopeId: SUMMARY_ALL,
   search: "",
   busy: false,
@@ -294,6 +295,10 @@ function projectName(projectId) {
   );
 }
 
+function projectById(projectId) {
+  return state.data.projects.find((project) => project.id === projectId) || null;
+}
+
 function summaryProjectId() {
   return state.summaryScopeId === SUMMARY_ALL ? "" : state.summaryScopeId;
 }
@@ -324,6 +329,25 @@ function scopedInventory() {
 
 function currentScopeLabel() {
   return summaryProjectId() ? projectName(summaryProjectId()) : "Todo ProN";
+}
+
+function setActiveView(tabName) {
+  state.activeTab = tabName;
+  $$("nav button").forEach((item) =>
+    item.classList.toggle("active", item.dataset.tab === tabName),
+  );
+  $$(".view").forEach((view) => {
+    view.classList.toggle("active", view.dataset.view === tabName);
+  });
+}
+
+function openProject(projectId) {
+  state.selectedProjectId = projectId;
+  state.summaryScopeId = projectId;
+  state.detailProjectId = projectId;
+  setActiveView("proyecto-detalle");
+  render();
+  window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
 function setMessage(message, tone = "info") {
@@ -357,7 +381,7 @@ function updateConnection(label, tone = "checking") {
 
   const pill = document.querySelector("#syncPill");
   if (pill) {
-    pill.textContent = tone === "ok" ? "Sheets activo" : label;
+    pill.textContent = tone === "ok" ? "Activo" : label;
     pill.className = `pill ${tone === "error" || tone === "local" ? "warning" : ""}`;
   }
 }
@@ -409,7 +433,7 @@ function jsonpRequest(payload) {
     const script = document.createElement("script");
     const timeout = window.setTimeout(() => {
       cleanup();
-      reject(new Error("Apps Script no respondio a tiempo. Reintenta la sincronizacion."));
+      reject(new Error("El sistema tardo mas de lo esperado."));
     }, JSONP_TIMEOUT_MS);
 
     function cleanup() {
@@ -425,7 +449,7 @@ function jsonpRequest(payload) {
 
     script.onerror = () => {
       cleanup();
-      reject(new Error("Apps Script no respondio. Revisa la publicacion del Web App."));
+      reject(new Error("No se pudo completar la conexion."));
     };
 
     const url = new URL(APPS_SCRIPT_URL);
@@ -442,18 +466,16 @@ async function checkBackend() {
     state.backend = result.ok ? "ready" : "pending";
     setTextIfExists(
       "#backendStatus",
-      result.ok
-        ? "Apps Script listo: Google Sheets activo"
-        : "Apps Script pendiente de publicacion",
+      result.ok ? "Sistema listo" : "Sistema en revision",
     );
     updateConnection(
-      result.ok ? "Google Sheets activo" : "Apps Script pendiente",
+      result.ok ? "Sistema activo" : "Sistema en revision",
       result.ok ? "ok" : "local",
     );
   } catch {
     state.backend = "retry";
-    setTextIfExists("#backendStatus", "Google Sheets tarda en responder; reintenta si hace falta");
-    updateConnection("Reintentar Sheets", "local");
+    setTextIfExists("#backendStatus", "Sistema en revision");
+    updateConnection("Reintentar", "local");
   }
 }
 
@@ -463,7 +485,7 @@ function showDashboard() {
   $("#sessionName").textContent = state.user?.name || "Administrador General";
   $("#sessionRole").textContent = state.user?.role || "Superadministrador";
   updateConnection(
-    isLocalSession() ? "Requiere reconexion" : "Google Sheets activo",
+    isLocalSession() ? "Requiere acceso" : "Sistema activo",
     isLocalSession() ? "local" : "ok",
   );
   render();
@@ -495,8 +517,8 @@ async function login(event) {
   }
 
   try {
-    setLoginMessage("Conectando ProN con Google Sheets...");
-    updateConnection("Conectando Sheets", "checking");
+    setLoginMessage("Clave correcta. Entrando...");
+    updateConnection("Entrando", "checking");
     const result = await callBackend(
       "login",
       {
@@ -509,7 +531,7 @@ async function login(event) {
     state.token = result.token;
     state.user = result.user;
     sessionStorage.setItem(TOKEN_KEY, result.token);
-    setLoginMessage("Acceso validado. Cargando base de Google Sheets...");
+    setLoginMessage("Acceso validado. Preparando panel...");
     const dataResult = await callBackend("get-data");
     state.user = dataResult.user || result.user;
     state.data = normalizeData(dataResult.data);
@@ -518,16 +540,16 @@ async function login(event) {
     $("#loginForm").reset();
     $("#rememberInput").checked = true;
     showDashboard();
-    setMessage("Google Sheets activo. Datos sincronizados desde la base de datos.");
-    updateConnection("Google Sheets activo", "ok");
+    setMessage("Panel listo.");
+    updateConnection("Sistema activo", "ok");
   } catch (error) {
     state.token = "";
     state.user = null;
     sessionStorage.removeItem(TOKEN_KEY);
     setLoginMessage(
-      `${error.message} No se abrio sesion sin Google Sheets; vuelve a intentar.`,
+      `${error.message} Vuelve a intentar.`,
     );
-    updateConnection("Reintentar Sheets", "error");
+    updateConnection("Reintentar", "error");
   } finally {
     setBusy(false);
   }
@@ -535,31 +557,31 @@ async function login(event) {
 
 async function refreshData() {
   if (isLocalSession()) {
-    logout("Sesion anterior limpiada. Entra de nuevo para conectar Google Sheets.");
+    logout("Sesion anterior limpiada. Entra de nuevo.");
     return;
   }
 
   setBusy(true);
-  setMessage("Sincronizando con Google Sheets...");
-  updateConnection("Sincronizando Sheets", "checking");
+  setMessage("Actualizando informacion...");
+  updateConnection("Actualizando", "checking");
 
   try {
     const result = await callBackend("get-data");
     state.data = normalizeData(result.data);
     state.backend = "ready";
-    setMessage("Datos actualizados desde Google Sheets.");
-    updateConnection("Google Sheets activo", "ok");
+    setMessage("Informacion actualizada.");
+    updateConnection("Sistema activo", "ok");
     render();
   } catch (error) {
     if (/sesion/i.test(error.message)) {
-      logout("Sesion expirada. Entra de nuevo para sincronizar Google Sheets.");
+      logout("Sesion expirada. Entra de nuevo.");
       return;
     }
     setMessage(
-      "Google Sheets no respondio en este intento. Se mantienen los datos cargados; pulsa Sincronizar Sheets otra vez.",
+      "No se pudo actualizar en este intento. Se mantienen los datos cargados; pulsa Actualizar otra vez.",
       "warning",
     );
-    updateConnection("Reintentar Sheets", "local");
+    updateConnection("Reintentar", "local");
   } finally {
     setBusy(false);
   }
@@ -575,7 +597,7 @@ async function resumeSession() {
     sessionStorage.removeItem(TOKEN_KEY);
     state.token = "";
     state.user = null;
-    showLogin("Sesion anterior limpiada. Entra para conectar ProN con Google Sheets.");
+    showLogin("Sesion anterior limpiada. Entra a ProN.");
     checkBackend();
     return;
   }
@@ -590,19 +612,19 @@ async function resumeSession() {
     state.data = normalizeData(result.data);
     state.backend = "ready";
     showDashboard();
-    setMessage("Google Sheets activo. Sesion restaurada.");
-    updateConnection("Google Sheets activo", "ok");
+    setMessage("Sesion restaurada.");
+    updateConnection("Sistema activo", "ok");
   } catch {
     sessionStorage.removeItem(TOKEN_KEY);
     state.token = "";
-    showLogin("Inicia sesion para conectar ProN con Google Sheets.");
-    updateConnection("Reintentar Sheets", "local");
+    showLogin("Inicia sesion para entrar a ProN.");
+    updateConnection("Reintentar", "local");
   }
 }
 
 async function submitAction(action, payload, successMessage) {
   if (isLocalSession()) {
-    logout("Sesion anterior limpiada. Entra de nuevo para guardar en Google Sheets.");
+    logout("Sesion anterior limpiada. Entra de nuevo para guardar.");
     return;
   }
 
@@ -616,15 +638,15 @@ async function submitAction(action, payload, successMessage) {
       state.selectedProjectId = state.data.projects[0]?.id || "";
     }
     setMessage(successMessage);
-    updateConnection("Google Sheets activo", "ok");
+    updateConnection("Sistema activo", "ok");
     render();
   } catch (error) {
     if (/sesion/i.test(error.message)) {
-      logout("Sesion expirada. Entra de nuevo para guardar en Google Sheets.");
+      logout("Sesion expirada. Entra de nuevo para guardar.");
       return;
     }
     setMessage(error.message, "warning");
-    updateConnection("Reintentar Sheets", "local");
+    updateConnection("Reintentar", "local");
   } finally {
     setBusy(false);
   }
@@ -876,6 +898,7 @@ function render() {
   renderUsers();
   renderReports();
   renderSettings();
+  renderProjectDetail();
 }
 
 function renderMetrics() {
@@ -936,9 +959,18 @@ function renderProjectSelects() {
 }
 
 function renderCategorySelects() {
-  const movementForm = $("#movementForm");
-  const movementType = movementForm.elements.type.value || "Gasto";
-  const movementCategory = movementForm.elements.category;
+  populateMovementCategorySelect($("#movementForm"));
+  populateMovementCategorySelect($("#detailMovementForm"));
+  populateInventoryCategorySelect($("#inventoryForm"));
+  populateInventoryCategorySelect($("#detailInventoryForm"));
+}
+
+function populateMovementCategorySelect(form) {
+  if (!form) {
+    return;
+  }
+  const movementType = form.elements.type.value || "Gasto";
+  const movementCategory = form.elements.category;
   const currentMovementCategory = movementCategory.value;
   movementCategory.replaceChildren(
     ...MOVEMENT_CATEGORIES[movementType].map((category) =>
@@ -948,8 +980,13 @@ function renderCategorySelects() {
   movementCategory.value = MOVEMENT_CATEGORIES[movementType].includes(currentMovementCategory)
     ? currentMovementCategory
     : MOVEMENT_CATEGORIES[movementType][0];
+}
 
-  const inventoryCategory = $("#inventoryForm").elements.category;
+function populateInventoryCategorySelect(form) {
+  if (!form) {
+    return;
+  }
+  const inventoryCategory = form.elements.category;
   const currentInventoryCategory = inventoryCategory.value;
   inventoryCategory.replaceChildren(
     ...INVENTORY_CATEGORIES.map((category) =>
@@ -990,6 +1027,159 @@ function renderLegend(selector, items) {
   );
 }
 
+function groupMovementsByDate(movements) {
+  const grouped = new Map();
+
+  movements.forEach((movement) => {
+    const date = movement.movementDate || movement.createdAt || today();
+    const current =
+      grouped.get(date) || {
+        date,
+        income: 0,
+        investment: 0,
+        expenses: 0,
+      };
+
+    if (movement.type === "Ingreso") {
+      current.income += numberValue(movement.amount);
+    } else if (movement.type === "Inversion") {
+      current.investment += numberValue(movement.amount);
+    } else {
+      current.expenses += numberValue(movement.amount);
+    }
+
+    grouped.set(date, current);
+  });
+
+  return [...grouped.values()].sort((a, b) => a.date.localeCompare(b.date));
+}
+
+function svgNode(tag, attrs = {}, children = []) {
+  const node = document.createElementNS("http://www.w3.org/2000/svg", tag);
+
+  Object.entries(attrs).forEach(([key, value]) => {
+    node.setAttribute(key, value);
+  });
+
+  children.forEach((child) => node.append(child));
+  return node;
+}
+
+function renderCandleChart(selector, movements) {
+  const container = $(selector);
+  const rows = groupMovementsByDate(movements).slice(-10);
+
+  if (!rows.length) {
+    container.replaceChildren(el("div", { class: "empty-state", text: "Sin datos para graficar." }));
+    return;
+  }
+
+  const width = 920;
+  const height = 280;
+  const padding = { top: 24, right: 34, bottom: 42, left: 74 };
+  const maxValue = Math.max(
+    1,
+    ...rows.flatMap((row) => [
+      row.income + row.investment,
+      row.expenses,
+      Math.abs(row.income + row.investment - row.expenses),
+    ]),
+  );
+  const y = (value) =>
+    height - padding.bottom - (Math.max(0, value) / maxValue) * (height - padding.top - padding.bottom);
+  const step = (width - padding.left - padding.right) / rows.length;
+
+  const grid = [0, 0.25, 0.5, 0.75, 1].map((ratio) => {
+    const value = maxValue * ratio;
+    const yy = y(value);
+    return svgNode("g", {}, [
+      svgNode("line", {
+        x1: padding.left,
+        x2: width - padding.right,
+        y1: yy,
+        y2: yy,
+        stroke: "#dbe3df",
+        "stroke-width": "1",
+      }),
+      svgNode("text", {
+        x: padding.left - 10,
+        y: yy + 4,
+        "text-anchor": "end",
+        fill: "#65736f",
+        "font-size": "12",
+      }, [document.createTextNode(money(value).replace(",00", ""))]),
+    ]);
+  });
+
+  const candles = rows.map((row, index) => {
+    const x = padding.left + step * index + step / 2;
+    const entrada = row.income + row.investment;
+    const salida = row.expenses;
+    const high = Math.max(entrada, salida);
+    const low = Math.min(entrada, salida);
+    const bodyTop = y(high);
+    const bodyBottom = y(low);
+    const bodyHeight = Math.max(6, bodyBottom - bodyTop);
+    const bodyWidth = Math.min(34, Math.max(14, step * 0.34));
+    const color = entrada >= salida ? "#0f766e" : "#d95f43";
+
+    return svgNode("g", {}, [
+      svgNode("line", {
+        x1: x,
+        x2: x,
+        y1: y(high),
+        y2: y(low),
+        stroke: color,
+        "stroke-width": "3",
+        "stroke-linecap": "round",
+      }),
+      svgNode("rect", {
+        x: x - bodyWidth / 2,
+        y: bodyTop,
+        width: bodyWidth,
+        height: bodyHeight,
+        rx: "4",
+        fill: color,
+        opacity: "0.9",
+      }),
+      svgNode("text", {
+        x,
+        y: height - 18,
+        "text-anchor": "middle",
+        fill: "#65736f",
+        "font-size": "12",
+      }, [document.createTextNode(row.date.slice(5))]),
+      svgNode("text", {
+        x,
+        y: Math.max(14, bodyTop - 8),
+        "text-anchor": "middle",
+        fill: "#10201d",
+        "font-size": "11",
+        "font-weight": "700",
+      }, [document.createTextNode(money(entrada - salida).replace(",00", ""))]),
+    ]);
+  });
+
+  const svg = svgNode("svg", {
+    viewBox: `0 0 ${width} ${height}`,
+    role: "img",
+    "aria-label": "Velas de flujo financiero",
+  }, [
+    ...grid,
+    svgNode("line", {
+      x1: padding.left,
+      x2: width - padding.right,
+      y1: height - padding.bottom,
+      y2: height - padding.bottom,
+      stroke: "#10201d",
+      "stroke-width": "1.5",
+    }),
+    ...candles,
+  ]);
+
+  container.replaceChildren(svg);
+}
+
 function renderSummary() {
   const current = totals();
   const projects = scopedProjects();
@@ -1010,6 +1200,7 @@ function renderSummary() {
   renderLegend("#financeLegend", financeItems);
   renderPie("#budgetPie", budgetItems);
   renderLegend("#budgetLegend", budgetItems);
+  renderCandleChart("#cashflowCandles", movements);
 
   replaceChildren(
     "#planBoard",
@@ -1078,11 +1269,11 @@ function renderSummary() {
     el("div", {}, [
       el("b", { text: "DB" }),
       el("strong", {
-        text: dbReady ? "Google Sheets operativo" : "Conexion en revision",
+        text: dbReady ? "Base operativa" : "Conexion en revision",
       }),
       el("span", {
         text: dbReady
-          ? "Lectura y escritura salen desde la hoja publicada."
+          ? "Lectura y escritura listas para trabajar."
           : "ProN intentara reconectar antes de operar.",
       }),
     ]),
@@ -1124,14 +1315,7 @@ function renderProjects() {
             el("button", {
               type: "button",
               text: "Abrir",
-              onclick: () => {
-                state.selectedProjectId = project.id;
-                state.summaryScopeId = project.id;
-                $("#projectSelect").value = project.id;
-                $("#summaryScopeSelect").value = project.id;
-                setMessage(`Vista activa: ${project.name}.`);
-                render();
-              },
+              onclick: () => openProject(project.id),
             }),
             el("button", {
               type: "button",
@@ -1160,7 +1344,7 @@ function renderProjects() {
                   `Eliminar ${project.name} y sus registros vinculados?`,
                   "delete-project",
                   { projectId: project.id },
-                  "Proyecto eliminado de Google Sheets.",
+                  "Proyecto eliminado.",
                 ),
             }),
           ]),
@@ -1197,7 +1381,7 @@ function renderMovements() {
                   `Eliminar movimiento ${movement.concept}?`,
                   "delete-movement",
                   { movementId: movement.id },
-                  "Movimiento eliminado de Google Sheets.",
+                  "Movimiento eliminado.",
                 ),
             }),
           ]),
@@ -1233,7 +1417,7 @@ function renderPartners() {
                 `Eliminar socio ${partner.name}?`,
                 "delete-partner",
                 { partnerId: partner.id },
-                "Socio eliminado de Google Sheets.",
+                "Socio eliminado.",
               ),
           }),
         ]),
@@ -1268,7 +1452,7 @@ function renderInventory() {
                   `Eliminar item ${item.item}?`,
                   "delete-inventory",
                   { inventoryId: item.id },
-                  "Inventario eliminado de Google Sheets.",
+                  "Inventario eliminado.",
                 ),
             }),
           ]),
@@ -1306,7 +1490,7 @@ function renderUsers() {
                     `Eliminar usuario ${user.name}?`,
                     "delete-user",
                     { userId: user.id },
-                    "Usuario eliminado de Google Sheets.",
+                    "Usuario eliminado.",
                   ),
               }),
             ]),
@@ -1334,9 +1518,134 @@ function renderReports() {
   );
 }
 
+function renderProjectDetail() {
+  const projectId = state.detailProjectId || state.selectedProjectId;
+  const project = projectById(projectId);
+
+  if (!project) {
+    return;
+  }
+
+  const movements = state.data.movements.filter((movement) => movement.projectId === project.id);
+  const partners = state.data.partners.filter((partner) => partner.projectId === project.id);
+  const inventory = state.data.inventory.filter((item) => item.projectId === project.id);
+  const current = totals(project.id);
+
+  setTextIfExists("#detailProjectName", project.name);
+  setTextIfExists("#detailProjectObjective", project.objective || "Proyecto sin objetivo registrado.");
+  setTextIfExists("#detailBudget", money(current.budget));
+  setTextIfExists("#detailIncome", money(current.income));
+  setTextIfExists("#detailInvestment", money(current.investment));
+  setTextIfExists("#detailExpenses", money(current.expenses));
+  setTextIfExists("#detailArchiveButton", project.status === "Archivado" ? "Restaurar" : "Archivar");
+  renderCandleChart("#detailCandles", movements);
+
+  replaceChildren(
+    "#detailMovementsBody",
+    movements.map((movement) =>
+      el("tr", {}, [
+        el("td", { text: movement.movementDate }),
+        el("td", { text: movement.type }),
+        el("td", { text: movement.category }),
+        el("td", { text: movement.concept }),
+        el("td", { text: money(movement.amount) }),
+        el("td", {}, [
+          el("div", { class: "row-actions" }, [
+            el("button", {
+              type: "button",
+              text: "PDF",
+              onclick: () => downloadMovementReceipt(movement.id),
+            }),
+            el("button", {
+              type: "button",
+              class: "danger",
+              text: "Eliminar",
+              onclick: () =>
+                confirmDelete(
+                  `Eliminar movimiento ${movement.concept}?`,
+                  "delete-movement",
+                  { movementId: movement.id },
+                  "Movimiento eliminado.",
+                ),
+            }),
+          ]),
+        ]),
+      ]),
+    ),
+  );
+
+  replaceChildren(
+    "#detailPartnersCards",
+    partners.map((partner) =>
+      el("div", {}, [
+        el("span", { text: partner.type }),
+        el("b", { text: partner.name }),
+        el("strong", {
+          text: `${money(partner.contribution)} - ${numberValue(partner.participation)}%`,
+        }),
+        el("div", { class: "card-actions" }, [
+          el("button", {
+            type: "button",
+            text: "PDF",
+            onclick: () => downloadPartnerCard(partner.id),
+          }),
+          el("button", {
+            type: "button",
+            class: "danger",
+            text: "Eliminar",
+            onclick: () =>
+              confirmDelete(
+                `Eliminar socio ${partner.name}?`,
+                "delete-partner",
+                { partnerId: partner.id },
+                "Socio eliminado.",
+              ),
+          }),
+        ]),
+      ]),
+    ),
+  );
+
+  replaceChildren(
+    "#detailInventoryBody",
+    inventory.map((item) =>
+      el("tr", {}, [
+        el("td", { text: item.item }),
+        el("td", { text: item.category }),
+        el("td", { text: money(numberValue(item.quantity) * numberValue(item.unitCost)) }),
+        el("td", {}, [
+          el("div", { class: "row-actions" }, [
+            el("button", {
+              type: "button",
+              text: "PDF",
+              onclick: () => downloadInventoryCard(item.id),
+            }),
+            el("button", {
+              type: "button",
+              class: "danger",
+              text: "Eliminar",
+              onclick: () =>
+                confirmDelete(
+                  `Eliminar item ${item.item}?`,
+                  "delete-inventory",
+                  { inventoryId: item.id },
+                  "Inventario eliminado.",
+                ),
+            }),
+          ]),
+        ]),
+      ]),
+    ),
+  );
+}
+
 function renderSettings() {
-  $("#scriptUrlInput").value = APPS_SCRIPT_URL;
-  $("#sheetUrlInput").value = SHEET_URL;
+  if ($("#scriptUrlInput")) {
+    $("#scriptUrlInput").value = APPS_SCRIPT_URL;
+  }
+  if ($("#sheetUrlInput")) {
+    $("#sheetUrlInput").value = SHEET_URL;
+  }
   $("#countryInput").value = state.data.settings.country;
   $("#currencyInput").value = state.data.settings.currency;
   $("#timezoneInput").value = state.data.settings.timezone;
@@ -1360,11 +1669,119 @@ function downloadText(filename, mime, content) {
   URL.revokeObjectURL(url);
 }
 
+function pdfSafe(value) {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^\x20-\x7E]/g, " ")
+    .replace(/\\/g, "\\\\")
+    .replace(/\(/g, "\\(")
+    .replace(/\)/g, "\\)");
+}
+
+function wrapPdfLine(line, maxLength = 94) {
+  const words = String(line).split(/\s+/);
+  const lines = [];
+  let current = "";
+
+  words.forEach((word) => {
+    if (!word) {
+      return;
+    }
+
+    if (`${current} ${word}`.trim().length > maxLength) {
+      if (current) {
+        lines.push(current);
+      }
+      current = word;
+    } else {
+      current = `${current} ${word}`.trim();
+    }
+  });
+
+  if (current) {
+    lines.push(current);
+  }
+
+  return lines.length ? lines : [""];
+}
+
+function buildPdf(title, content) {
+  const lines = [
+    title,
+    `Generado: ${new Date().toLocaleString("es-EC")}`,
+    "",
+    ...String(content).split(/\r?\n/),
+  ].flatMap((line) => wrapPdfLine(line));
+  const linesPerPage = 47;
+  const chunks = [];
+
+  for (let index = 0; index < lines.length; index += linesPerPage) {
+    chunks.push(lines.slice(index, index + linesPerPage));
+  }
+
+  const objects = [
+    null,
+    "",
+    "",
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+  ];
+  const pageRefs = [];
+
+  chunks.forEach((chunk) => {
+    const commands = [
+      "BT",
+      "/F1 10 Tf",
+      "54 746 Td",
+      "14 TL",
+      ...chunk.map((line, index) => `${index ? "T* " : ""}(${pdfSafe(line)}) Tj`),
+      "ET",
+    ].join("\n");
+    const contentObjectNumber = objects.length;
+    objects.push(`<< /Length ${commands.length} >>\nstream\n${commands}\nendstream`);
+    const pageObjectNumber = objects.length;
+    objects.push(
+      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents ${contentObjectNumber} 0 R >>`,
+    );
+    pageRefs.push(`${pageObjectNumber} 0 R`);
+  });
+
+  objects[1] = "<< /Type /Catalog /Pages 2 0 R >>";
+  objects[2] = `<< /Type /Pages /Count ${pageRefs.length} /Kids [${pageRefs.join(" ")}] >>`;
+
+  let pdf = "%PDF-1.4\n";
+  const offsets = [0];
+
+  for (let index = 1; index < objects.length; index += 1) {
+    offsets[index] = pdf.length;
+    pdf += `${index} 0 obj\n${objects[index]}\nendobj\n`;
+  }
+
+  const xrefOffset = pdf.length;
+  pdf += `xref\n0 ${objects.length}\n0000000000 65535 f \n`;
+  for (let index = 1; index < objects.length; index += 1) {
+    pdf += `${String(offsets[index]).padStart(10, "0")} 00000 n \n`;
+  }
+  pdf += `trailer\n<< /Size ${objects.length} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`;
+
+  return new Blob([pdf], { type: "application/pdf" });
+}
+
+function downloadPdf(filename, title, content) {
+  const blob = buildPdf(title, content);
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
 function logout(message = "Sesion cerrada.") {
   sessionStorage.removeItem(TOKEN_KEY);
   state.token = "";
   state.user = null;
-  updateConnection("Verificando Google Sheets", "checking");
+  updateConnection("Sistema listo", "checking");
   showLogin(message);
   checkBackend();
 }
@@ -1445,12 +1862,16 @@ function buildReport(projectId = summaryProjectId()) {
 
 function downloadScopeReport() {
   const label = safeFileName(currentScopeLabel());
-  downloadText(`pron-${label}.txt`, "text/plain;charset=utf-8", buildReport());
+  downloadPdf(`pron-${label}.pdf`, `ProN - ${currentScopeLabel()}`, buildReport());
 }
 
 function downloadProjectReport(projectId) {
   const label = safeFileName(projectName(projectId));
-  downloadText(`pron-proyecto-${label}.txt`, "text/plain;charset=utf-8", buildReport(projectId));
+  downloadPdf(
+    `pron-proyecto-${label}.pdf`,
+    `ProN - Proyecto ${projectName(projectId)}`,
+    buildReport(projectId),
+  );
 }
 
 function downloadMovementReceipt(movementId) {
@@ -1458,11 +1879,10 @@ function downloadMovementReceipt(movementId) {
   if (!movement) {
     return;
   }
-  downloadText(
-    `pron-movimiento-${safeFileName(movement.concept)}.txt`,
-    "text/plain;charset=utf-8",
+  downloadPdf(
+    `pron-movimiento-${safeFileName(movement.concept)}.pdf`,
+    "ProN - Comprobante de movimiento",
     [
-      "ProN - Comprobante de movimiento",
       `Proyecto: ${projectName(movement.projectId)}`,
       `Fecha: ${movement.movementDate}`,
       `Tipo: ${movement.type}`,
@@ -1479,11 +1899,10 @@ function downloadPartnerCard(partnerId) {
   if (!partner) {
     return;
   }
-  downloadText(
-    `pron-socio-${safeFileName(partner.name)}.txt`,
-    "text/plain;charset=utf-8",
+  downloadPdf(
+    `pron-socio-${safeFileName(partner.name)}.pdf`,
+    "ProN - Ficha de socio",
     [
-      "ProN - Ficha de socio",
       `Nombre: ${partner.name}`,
       `Tipo: ${partner.type}`,
       `Proyecto: ${projectName(partner.projectId)}`,
@@ -1499,11 +1918,10 @@ function downloadInventoryCard(inventoryId) {
   if (!item) {
     return;
   }
-  downloadText(
-    `pron-inventario-${safeFileName(item.item)}.txt`,
-    "text/plain;charset=utf-8",
+  downloadPdf(
+    `pron-inventario-${safeFileName(item.item)}.pdf`,
+    "ProN - Ficha de inventario",
     [
-      "ProN - Ficha de inventario",
       `Item: ${item.item}`,
       `Categoria: ${item.category}`,
       `Proyecto: ${projectName(item.projectId)}`,
@@ -1520,11 +1938,10 @@ function downloadUserCard(userId) {
   if (!user) {
     return;
   }
-  downloadText(
-    `pron-usuario-${safeFileName(user.name)}.txt`,
-    "text/plain;charset=utf-8",
+  downloadPdf(
+    `pron-usuario-${safeFileName(user.name)}.pdf`,
+    "ProN - Ficha de usuario",
     [
-      "ProN - Ficha de usuario",
       `Nombre: ${user.name}`,
       `Rol: ${user.role}`,
       `Proyecto: ${projectName(user.projectId)}`,
@@ -1556,10 +1973,11 @@ function downloadJson() {
 
 function confirmDelete(question, action, payload, successMessage) {
   if (!window.confirm(question)) {
-    return;
+    return false;
   }
 
   submitAction(action, payload, successMessage);
+  return true;
 }
 
 function bindEvents() {
@@ -1584,15 +2002,51 @@ function bindEvents() {
     renderMovements();
   });
   $("#movementForm").elements.type.addEventListener("change", renderCategorySelects);
+  $("#detailMovementForm").elements.type.addEventListener("change", renderCategorySelects);
+  $("#backToProjectsButton").addEventListener("click", () => setActiveView("proyectos"));
+  $("#detailPdfButton").addEventListener("click", () => {
+    downloadProjectReport(state.detailProjectId || state.selectedProjectId);
+  });
+  $("#detailCsvButton").addEventListener("click", () => {
+    const projectId = state.detailProjectId || state.selectedProjectId;
+    downloadText(
+      `movimientos-${safeFileName(projectName(projectId))}.csv`,
+      "text/csv;charset=utf-8",
+      buildCsv(projectId),
+    );
+  });
+  $("#detailArchiveButton").addEventListener("click", () => {
+    const project = projectById(state.detailProjectId || state.selectedProjectId);
+    if (!project) {
+      return;
+    }
+    submitAction(
+      "update-project-status",
+      {
+        projectId: project.id,
+        status: project.status === "Archivado" ? "Activo" : "Archivado",
+      },
+      "Estado del proyecto actualizado.",
+    );
+  });
+  $("#detailDeleteButton").addEventListener("click", () => {
+    const project = projectById(state.detailProjectId || state.selectedProjectId);
+    if (!project) {
+      return;
+    }
+    if (confirmDelete(
+      `Eliminar ${project.name} y sus registros vinculados?`,
+      "delete-project",
+      { projectId: project.id },
+      "Proyecto eliminado.",
+    )) {
+      setActiveView("proyectos");
+    }
+  });
 
   $$("nav button").forEach((button) => {
     button.addEventListener("click", () => {
-      state.activeTab = button.dataset.tab;
-      $$("nav button").forEach((item) => item.classList.remove("active"));
-      button.classList.add("active");
-      $$(".view").forEach((view) => {
-        view.classList.toggle("active", view.dataset.view === state.activeTab);
-      });
+      setActiveView(button.dataset.tab);
     });
   });
 
@@ -1608,7 +2062,7 @@ function bindEvents() {
         timezone: "America/Guayaquil",
         budget: numberValue(data.budget),
       },
-      "Proyecto creado en Google Sheets.",
+      "Proyecto creado.",
     );
     event.currentTarget.reset();
   });
@@ -1623,10 +2077,27 @@ function bindEvents() {
         projectId: state.selectedProjectId,
         amount: numberValue(data.amount),
       },
-      "Movimiento guardado en Google Sheets.",
+      "Movimiento guardado.",
     );
     event.currentTarget.reset();
     event.currentTarget.elements.movementDate.value = today();
+  });
+
+  $("#detailMovementForm").addEventListener("submit", (event) => {
+    event.preventDefault();
+    const data = formData(event.currentTarget);
+    submitAction(
+      "create-movement",
+      {
+        ...data,
+        projectId: state.detailProjectId || state.selectedProjectId,
+        amount: numberValue(data.amount),
+      },
+      "Movimiento guardado.",
+    );
+    event.currentTarget.reset();
+    event.currentTarget.elements.movementDate.value = today();
+    renderCategorySelects();
   });
 
   $("#partnerForm").addEventListener("submit", (event) => {
@@ -1640,7 +2111,23 @@ function bindEvents() {
         contribution: numberValue(data.contribution),
         participation: numberValue(data.participation),
       },
-      "Socio guardado en Google Sheets.",
+      "Socio guardado.",
+    );
+    event.currentTarget.reset();
+  });
+
+  $("#detailPartnerForm").addEventListener("submit", (event) => {
+    event.preventDefault();
+    const data = formData(event.currentTarget);
+    submitAction(
+      "create-partner",
+      {
+        ...data,
+        projectId: state.detailProjectId || state.selectedProjectId,
+        contribution: numberValue(data.contribution),
+        participation: numberValue(data.participation),
+      },
+      "Socio guardado.",
     );
     event.currentTarget.reset();
   });
@@ -1656,9 +2143,26 @@ function bindEvents() {
         quantity: numberValue(data.quantity),
         unitCost: numberValue(data.unitCost),
       },
-      "Inventario actualizado en Google Sheets.",
+      "Inventario actualizado.",
     );
     event.currentTarget.reset();
+  });
+
+  $("#detailInventoryForm").addEventListener("submit", (event) => {
+    event.preventDefault();
+    const data = formData(event.currentTarget);
+    submitAction(
+      "create-inventory",
+      {
+        ...data,
+        projectId: state.detailProjectId || state.selectedProjectId,
+        quantity: numberValue(data.quantity),
+        unitCost: numberValue(data.unitCost),
+      },
+      "Inventario actualizado.",
+    );
+    event.currentTarget.reset();
+    renderCategorySelects();
   });
 
   $("#userForm").addEventListener("submit", (event) => {
@@ -1670,7 +2174,21 @@ function bindEvents() {
         ...data,
         projectId: data.projectId || state.selectedProjectId,
       },
-      "Usuario agregado en Google Sheets.",
+      "Usuario agregado.",
+    );
+    event.currentTarget.reset();
+  });
+
+  $("#detailUserForm").addEventListener("submit", (event) => {
+    event.preventDefault();
+    const data = formData(event.currentTarget);
+    submitAction(
+      "create-user",
+      {
+        ...data,
+        projectId: state.detailProjectId || state.selectedProjectId,
+      },
+      "Usuario agregado.",
     );
     event.currentTarget.reset();
   });
@@ -1693,6 +2211,7 @@ function bindEvents() {
 function init() {
   bindEvents();
   $("#movementForm").elements.movementDate.value = today();
+  $("#detailMovementForm").elements.movementDate.value = today();
   checkBackend();
   resumeSession();
 }

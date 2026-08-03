@@ -98,17 +98,22 @@ test("ships the GitHub Pages and Apps Script integration", async () => {
     "utf8",
   );
 
-  assert.match(index, /ERP Dashboard conectado a Google Sheets/);
+  assert.match(index, /ERP Dashboard/);
   assert.match(pages, /AKfycbzf1TjxIBrBNJ6fTY5NNciAlWCl0PFKYgCpRXcdRg2S9aYKjMqDxeVCgC1JlcZet8iLNA/);
   assert.match(pages, /function jsonpRequest/);
   assert.match(pages, /LOCAL_DB_KEY/);
   assert.match(index, /summaryScopeSelect/);
   assert.match(index, /financePie/);
   assert.match(index, /budgetPie/);
+  assert.match(index, /cashflowCandles/);
+  assert.match(index, /data-view="proyecto-detalle"/);
   assert.match(index, /exportTopButton/);
-  assert.match(index, /exportJsonButton/);
+  assert.match(index, /Descargar PDF/);
   assert.match(pages, /delete-project/);
   assert.match(pages, /downloadProjectReport/);
+  assert.match(pages, /downloadPdf/);
+  assert.match(pages, /renderCandleChart/);
+  assert.match(pages, /openProject/);
   assert.match(pages, /MOVEMENT_CATEGORIES/);
   assert.match(appsScript, /function doGet/);
   assert.match(appsScript, /function doPost/);

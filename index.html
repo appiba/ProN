@@ -18,7 +18,7 @@
           <span>PN</span>
           <div>
             <h1>ProN</h1>
-            <p>ERP Dashboard conectado a Google Sheets</p>
+            <p>ERP Dashboard</p>
           </div>
         </div>
 
@@ -43,17 +43,6 @@
           <button type="submit">Entrar a ProN</button>
           <p id="loginMessage" class="form-message"></p>
         </form>
-
-        <div class="backend-box">
-          <span id="backendStatus">Verificando Apps Script...</span>
-          <a
-            href="https://docs.google.com/spreadsheets/d/1KCzz2B59PN3IvcyM2_G2uvTi8nA759oV7rUsaXvrcSY/edit?gid=0#gid=0"
-            target="_blank"
-            rel="noreferrer"
-          >
-            Abrir Google Sheet
-          </a>
-        </div>
       </div>
     </section>
 
@@ -93,20 +82,10 @@
             <h2>ProN para negocios, proyectos y eventos</h2>
           </div>
           <div class="top-actions">
-            <span id="connectionBadge" class="connection-badge checking">
-              Verificando Google Sheets
-            </span>
-            <a
-              class="ghost-link"
-              href="https://docs.google.com/spreadsheets/d/1KCzz2B59PN3IvcyM2_G2uvTi8nA759oV7rUsaXvrcSY/edit?gid=0#gid=0"
-              target="_blank"
-              rel="noreferrer"
-            >
-              Google Sheet
-            </a>
-            <button id="refreshButton" type="button">Sincronizar Sheets</button>
+            <span id="connectionBadge" class="connection-badge checking">Sistema listo</span>
+            <button id="refreshButton" type="button">Actualizar</button>
             <button id="exportTopButton" class="ghost-button" type="button">
-              Descargar informe
+              Descargar PDF
             </button>
             <button id="topLogoutButton" class="ghost-button" type="button">Salir</button>
           </div>
@@ -177,7 +156,7 @@
             <article class="panel">
               <div class="panel-title">
                 <div>
-                  <p class="eyebrow">Pastel</p>
+                  <p class="eyebrow">Grafico</p>
                   <h3>Distribucion financiera</h3>
                 </div>
               </div>
@@ -188,7 +167,7 @@
             <article class="panel">
               <div class="panel-title">
                 <div>
-                  <p class="eyebrow">Pastel</p>
+                  <p class="eyebrow">Grafico</p>
                   <h3>Presupuesto por proyecto</h3>
                 </div>
               </div>
@@ -203,10 +182,20 @@
                   <h3>Plan operativo de la vista</h3>
                 </div>
                 <button id="downloadScopeButton" class="ghost-button" type="button">
-                  Descargar vista
+                  Descargar PDF
                 </button>
               </div>
               <div id="planBoard" class="plan-board"></div>
+            </article>
+
+            <article class="panel wide">
+              <div class="panel-title">
+                <div>
+                  <p class="eyebrow">Plano</p>
+                  <h3>Velas de flujo por fecha</h3>
+                </div>
+              </div>
+              <div id="cashflowCandles" class="candle-chart"></div>
             </article>
 
             <article class="panel wide">
@@ -240,7 +229,7 @@
                   <p class="eyebrow">Direccion</p>
                   <h3>Centro de mando</h3>
                 </div>
-                <span id="syncPill" class="pill">Sheets</span>
+                <span id="syncPill" class="pill">Activo</span>
               </div>
               <div id="executiveSignals" class="signal-list"></div>
             </article>
@@ -440,7 +429,7 @@
                   <h3>Indicadores ejecutivos</h3>
                 </div>
                 <button id="exportTxtButton" class="ghost-button" type="button">
-                  Informe TXT
+                  Informe PDF
                 </button>
                 <button id="exportJsonButton" class="ghost-button" type="button">
                   Descargar JSON
@@ -454,16 +443,8 @@
         <section class="view" data-view="configuracion">
           <div class="grid">
             <article class="panel wide">
-              <h3>Conexion</h3>
+              <h3>Configuracion general</h3>
               <div class="settings-grid">
-                <label>
-                  Apps Script Web App
-                  <input id="scriptUrlInput" readonly />
-                </label>
-                <label>
-                  Google Sheet
-                  <input id="sheetUrlInput" readonly />
-                </label>
                 <label>
                   Pais
                   <input id="countryInput" readonly />
@@ -480,9 +461,168 @@
             </article>
           </div>
         </section>
+
+        <section class="view" data-view="proyecto-detalle">
+          <div class="project-page">
+            <header class="project-hero">
+              <button id="backToProjectsButton" class="ghost-button" type="button">
+                Volver a proyectos
+              </button>
+              <div>
+                <p class="eyebrow">Proyecto activo</p>
+                <h2 id="detailProjectName">Proyecto</h2>
+                <p id="detailProjectObjective"></p>
+              </div>
+              <div class="project-actions">
+                <button id="detailPdfButton" type="button">Descargar PDF</button>
+                <button id="detailArchiveButton" class="ghost-button" type="button">
+                  Archivar
+                </button>
+                <button id="detailDeleteButton" class="ghost-button danger" type="button">
+                  Eliminar
+                </button>
+              </div>
+            </header>
+
+            <section class="metrics compact-metrics" aria-label="Indicadores del proyecto">
+              <article>
+                <span>Presupuesto</span>
+                <strong id="detailBudget">$0,00</strong>
+              </article>
+              <article>
+                <span>Ingresos</span>
+                <strong id="detailIncome">$0,00</strong>
+              </article>
+              <article>
+                <span>Inversiones</span>
+                <strong id="detailInvestment">$0,00</strong>
+              </article>
+              <article>
+                <span>Gastos</span>
+                <strong id="detailExpenses">$0,00</strong>
+              </article>
+            </section>
+
+            <div class="grid">
+              <article class="panel wide">
+                <div class="panel-title">
+                  <div>
+                    <p class="eyebrow">Plano</p>
+                    <h3>Velas del proyecto</h3>
+                  </div>
+                </div>
+                <div id="detailCandles" class="candle-chart"></div>
+              </article>
+
+              <article class="panel">
+                <h3>Movimiento del proyecto</h3>
+                <form id="detailMovementForm" class="stack-form">
+                  <select name="type">
+                    <option>Gasto</option>
+                    <option>Ingreso</option>
+                    <option>Inversion</option>
+                  </select>
+                  <select name="category" required></select>
+                  <input name="concept" placeholder="Concepto" required />
+                  <input name="amount" inputmode="decimal" placeholder="Valor" required />
+                  <input name="movementDate" type="date" required />
+                  <button type="submit">Guardar movimiento</button>
+                </form>
+              </article>
+
+              <article class="panel">
+                <h3>Socio o inversionista</h3>
+                <form id="detailPartnerForm" class="stack-form">
+                  <input name="name" placeholder="Nombre" required />
+                  <select name="type">
+                    <option>Socio</option>
+                    <option>Inversionista</option>
+                    <option>Aliado</option>
+                    <option>Proveedor estrategico</option>
+                    <option>Patrocinador</option>
+                  </select>
+                  <input name="contribution" inputmode="decimal" placeholder="Aporte USD" />
+                  <input name="participation" inputmode="decimal" placeholder="Participacion %" />
+                  <button type="submit">Guardar socio</button>
+                </form>
+              </article>
+
+              <article class="panel">
+                <h3>Inventario del proyecto</h3>
+                <form id="detailInventoryForm" class="stack-form">
+                  <input name="item" placeholder="Item" required />
+                  <select name="category" required></select>
+                  <input name="quantity" inputmode="numeric" placeholder="Cantidad" required />
+                  <input name="unitCost" inputmode="decimal" placeholder="Costo unitario" />
+                  <button type="submit">Agregar inventario</button>
+                </form>
+              </article>
+
+              <article class="panel">
+                <h3>Usuario del proyecto</h3>
+                <form id="detailUserForm" class="stack-form">
+                  <input name="name" placeholder="Nombre" required />
+                  <input name="email" type="email" placeholder="Correo de invitacion" required />
+                  <select name="role">
+                    <option>Administrador de proyecto</option>
+                    <option>Administrador financiero</option>
+                    <option>Invitado</option>
+                  </select>
+                  <button type="submit">Enviar invitacion</button>
+                </form>
+              </article>
+
+              <article class="panel wide">
+                <div class="panel-title">
+                  <h3>Movimientos del proyecto</h3>
+                  <button id="detailCsvButton" class="ghost-button" type="button">
+                    Descargar CSV
+                  </button>
+                </div>
+                <div class="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Fecha</th>
+                        <th>Tipo</th>
+                        <th>Categoria</th>
+                        <th>Concepto</th>
+                        <th>Valor</th>
+                        <th>Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody id="detailMovementsBody"></tbody>
+                  </table>
+                </div>
+              </article>
+
+              <article class="panel">
+                <h3>Socios del proyecto</h3>
+                <div id="detailPartnersCards" class="cards compact-cards"></div>
+              </article>
+
+              <article class="panel">
+                <h3>Inventario del proyecto</h3>
+                <div class="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Item</th>
+                        <th>Categoria</th>
+                        <th>Valor</th>
+                        <th>Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody id="detailInventoryBody"></tbody>
+                  </table>
+                </div>
+              </article>
+            </div>
+          </div>
+        </section>
       </section>
     </main>
 
-    <script src="pages.js?v=20260803-e5ab0f2-actions-charts"></script>
+    <script src="pages.js?v=20260803-523c3d0-project-pdf"></script>
   </body>
 </html>

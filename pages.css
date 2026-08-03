@@ -278,6 +278,12 @@ nav button:hover {
   color: var(--ink);
 }
 
+.ghost-button.danger {
+  border-color: rgba(217, 95, 67, 0.35);
+  background: var(--red-soft);
+  color: #8b2e1d;
+}
+
 .workspace {
   display: grid;
   align-content: start;
@@ -754,6 +760,78 @@ nav button:hover {
   font-size: 13px;
 }
 
+.candle-chart {
+  min-height: 260px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background:
+    linear-gradient(#eef3f0 1px, transparent 1px) 0 0 / 100% 25%,
+    linear-gradient(90deg, #eef3f0 1px, transparent 1px) 0 0 / 12.5% 100%,
+    #fbfcfb;
+  overflow: hidden;
+}
+
+.candle-chart svg {
+  display: block;
+  width: 100%;
+  min-height: 260px;
+}
+
+.candle-chart .empty-state {
+  display: grid;
+  min-height: 260px;
+  place-items: center;
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.project-page {
+  display: grid;
+  gap: 16px;
+}
+
+.project-hero {
+  display: grid;
+  grid-template-columns: auto minmax(260px, 1fr) auto;
+  gap: 16px;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-left: 5px solid var(--teal);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: var(--shadow);
+  padding: 18px;
+}
+
+.project-hero h2,
+.project-hero p {
+  margin: 0;
+}
+
+.project-hero > button {
+  width: auto;
+}
+
+.project-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.project-actions button {
+  width: auto;
+}
+
+.compact-metrics .metrics article,
+.compact-metrics article {
+  min-height: 92px;
+}
+
+.compact-cards {
+  grid-template-columns: 1fr;
+}
+
 .table-wrap {
   width: 100%;
   overflow-x: auto;
@@ -897,6 +975,19 @@ nav button:hover {
 
   .bar-chart div {
     grid-template-columns: 1fr;
+  }
+
+  .project-hero {
+    grid-template-columns: 1fr;
+  }
+
+  .project-actions {
+    justify-content: stretch;
+  }
+
+  .project-actions button,
+  .project-hero > button {
+    width: 100%;
   }
 }
 
