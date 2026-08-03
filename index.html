@@ -105,6 +105,9 @@
               Google Sheet
             </a>
             <button id="refreshButton" type="button">Sincronizar Sheets</button>
+            <button id="exportTopButton" class="ghost-button" type="button">
+              Descargar informe
+            </button>
             <button id="topLogoutButton" class="ghost-button" type="button">Salir</button>
           </div>
         </header>
@@ -155,6 +158,10 @@
 
         <section class="toolbar">
           <label>
+            Vista de resumen
+            <select id="summaryScopeSelect"></select>
+          </label>
+          <label>
             Proyecto activo
             <select id="projectSelect"></select>
           </label>
@@ -167,6 +174,41 @@
 
         <section class="view active" data-view="resumen">
           <div class="grid">
+            <article class="panel">
+              <div class="panel-title">
+                <div>
+                  <p class="eyebrow">Pastel</p>
+                  <h3>Distribucion financiera</h3>
+                </div>
+              </div>
+              <div id="financePie" class="pie-chart" aria-label="Grafico de pastel financiero"></div>
+              <div id="financeLegend" class="legend-list"></div>
+            </article>
+
+            <article class="panel">
+              <div class="panel-title">
+                <div>
+                  <p class="eyebrow">Pastel</p>
+                  <h3>Presupuesto por proyecto</h3>
+                </div>
+              </div>
+              <div id="budgetPie" class="pie-chart" aria-label="Grafico de pastel por presupuesto"></div>
+              <div id="budgetLegend" class="legend-list"></div>
+            </article>
+
+            <article class="panel wide">
+              <div class="panel-title">
+                <div>
+                  <p class="eyebrow">Plan</p>
+                  <h3>Plan operativo de la vista</h3>
+                </div>
+                <button id="downloadScopeButton" class="ghost-button" type="button">
+                  Descargar vista
+                </button>
+              </div>
+              <div id="planBoard" class="plan-board"></div>
+            </article>
+
             <article class="panel wide">
               <div class="panel-title">
                 <div>
@@ -260,7 +302,7 @@
                   <option>Ingreso</option>
                   <option>Inversion</option>
                 </select>
-                <input name="category" placeholder="Categoria" required />
+                <select name="category" required></select>
                 <input name="concept" placeholder="Concepto" required />
                 <input name="amount" inputmode="decimal" placeholder="Valor" required />
                 <input name="movementDate" type="date" required />
@@ -285,6 +327,7 @@
                       <th>Categoria</th>
                       <th>Concepto</th>
                       <th>Valor</th>
+                      <th>Acciones</th>
                     </tr>
                   </thead>
                   <tbody id="movementsBody"></tbody>
@@ -304,6 +347,8 @@
                   <option>Socio</option>
                   <option>Inversionista</option>
                   <option>Aliado</option>
+                  <option>Proveedor estrategico</option>
+                  <option>Patrocinador</option>
                 </select>
                 <input name="contribution" inputmode="decimal" placeholder="Aporte USD" />
                 <input name="participation" inputmode="decimal" placeholder="Participacion %" />
@@ -323,7 +368,7 @@
               <h3>Agregar inventario</h3>
               <form id="inventoryForm" class="stack-form">
                 <input name="item" placeholder="Item" required />
-                <input name="category" placeholder="Categoria" required />
+                <select name="category" required></select>
                 <input name="quantity" inputmode="numeric" placeholder="Cantidad" required />
                 <input name="unitCost" inputmode="decimal" placeholder="Costo unitario" />
                 <button type="submit">Agregar item</button>
@@ -340,6 +385,7 @@
                       <th>Categoria</th>
                       <th>Cantidad</th>
                       <th>Valor</th>
+                      <th>Acciones</th>
                     </tr>
                   </thead>
                   <tbody id="inventoryBody"></tbody>
@@ -361,6 +407,7 @@
                   <option>Administrador financiero</option>
                   <option>Invitado</option>
                 </select>
+                <select id="userProjectInput" name="projectId"></select>
                 <button type="submit">Enviar invitacion</button>
               </form>
             </article>
@@ -374,6 +421,7 @@
                       <th>Rol</th>
                       <th>Proyecto</th>
                       <th>Estado</th>
+                      <th>Acciones</th>
                     </tr>
                   </thead>
                   <tbody id="usersBody"></tbody>
@@ -393,6 +441,9 @@
                 </div>
                 <button id="exportTxtButton" class="ghost-button" type="button">
                   Informe TXT
+                </button>
+                <button id="exportJsonButton" class="ghost-button" type="button">
+                  Descargar JSON
                 </button>
               </div>
               <div id="chartBars" class="bar-chart"></div>
@@ -432,6 +483,6 @@
       </section>
     </main>
 
-    <script src="pages.js?v=20260803-58ae27a-professional-sync"></script>
+    <script src="pages.js?v=20260803-e5ab0f2-actions-charts"></script>
   </body>
 </html>

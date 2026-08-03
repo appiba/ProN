@@ -11,6 +11,54 @@ const PASSWORD_SALT = "pron-apps-script-password-v1";
 const SUPERADMIN_PASSWORD_SHA256 =
   "105682a7333783a9e62bee3a503321582a8df6b9ca899512c1f8f53c3b59803f";
 const JSONP_TIMEOUT_MS = 60000;
+const SUMMARY_ALL = "__all__";
+const PIE_COLORS = ["#0f766e", "#315f9f", "#f2b84b", "#d95f43", "#5b7f67", "#7c5c9e"];
+const MOVEMENT_CATEGORIES = {
+  Gasto: [
+    "Operacion",
+    "Activos",
+    "Personal",
+    "Marketing",
+    "Arriendo",
+    "Servicios",
+    "Transporte",
+    "Mantenimiento",
+    "Impuestos",
+    "Tecnologia",
+    "Contingencia",
+  ],
+  Ingreso: [
+    "Ventas",
+    "Patrocinio",
+    "Reserva",
+    "Contrato",
+    "Servicio",
+    "Comision",
+    "Recuperacion",
+    "Otro ingreso",
+  ],
+  Inversion: [
+    "Aporte inicial",
+    "Capital de socios",
+    "Credito",
+    "Equipamiento",
+    "Adecuaciones",
+    "Expansion",
+    "Fondo operativo",
+  ],
+};
+const INVENTORY_CATEGORIES = [
+  "Activo fijo",
+  "Inventario",
+  "Mobiliario",
+  "Tecnologia",
+  "Cocina",
+  "Herramientas",
+  "Insumos",
+  "Mercaderia",
+  "Lenceria",
+  "Produccion",
+];
 
 const fallbackData = {
   settings: {
@@ -184,6 +232,7 @@ const state = {
   data: loadLocalData(),
   activeTab: "resumen",
   selectedProjectId: fallbackData.projects[0].id,
+  summaryScopeId: SUMMARY_ALL,
   search: "",
   busy: false,
   backend: "checking",
@@ -245,6 +294,38 @@ function projectName(projectId) {
   );
 }
 
+function summaryProjectId() {
+  return state.summaryScopeId === SUMMARY_ALL ? "" : state.summaryScopeId;
+}
+
+function inSummaryScope(projectId) {
+  const scopedId = summaryProjectId();
+  return !scopedId || projectId === scopedId;
+}
+
+function scopedProjects() {
+  const scopedId = summaryProjectId();
+  return scopedId
+    ? state.data.projects.filter((project) => project.id === scopedId)
+    : state.data.projects;
+}
+
+function scopedMovements() {
+  return state.data.movements.filter((movement) => inSummaryScope(movement.projectId));
+}
+
+function scopedPartners() {
+  return state.data.partners.filter((partner) => inSummaryScope(partner.projectId));
+}
+
+function scopedInventory() {
+  return state.data.inventory.filter((item) => inSummaryScope(item.projectId));
+}
+
+function currentScopeLabel() {
+  return summaryProjectId() ? projectName(summaryProjectId()) : "Todo ProN";
+}
+
 function setMessage(message, tone = "info") {
   const notice = $("#notice");
   if (!notice) {
@@ -297,13 +378,27 @@ async function callBackend(action, payload = {}, auth = true) {
     token: auth ? state.token : payload.token,
   };
 
-  const result = await jsonpRequest(body);
+  let result;
+  try {
+    result = await jsonpRequest(body);
+  } catch (error) {
+    if (["health", "login", "get-data"].includes(action)) {
+      await delay(1200);
+      result = await jsonpRequest(body);
+    } else {
+      throw error;
+    }
+  }
 
   if (result.ok === false) {
     throw new Error(result.error || "No se pudo completar la operacion.");
   }
 
   return result;
+}
+
+function delay(ms) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
 function jsonpRequest(payload) {
@@ -356,9 +451,9 @@ async function checkBackend() {
       result.ok ? "ok" : "local",
     );
   } catch {
-    state.backend = "error";
-    setTextIfExists("#backendStatus", "Apps Script aun no responde");
-    updateConnection("Reconectando Sheets", "error");
+    state.backend = "retry";
+    setTextIfExists("#backendStatus", "Google Sheets tarda en responder; reintenta si hace falta");
+    updateConnection("Reintentar Sheets", "local");
   }
 }
 
@@ -413,10 +508,13 @@ async function login(event) {
     );
     state.token = result.token;
     state.user = result.user;
-    state.data = normalizeData(result.data);
+    sessionStorage.setItem(TOKEN_KEY, result.token);
+    setLoginMessage("Acceso validado. Cargando base de Google Sheets...");
+    const dataResult = await callBackend("get-data");
+    state.user = dataResult.user || result.user;
+    state.data = normalizeData(dataResult.data);
     state.selectedProjectId = state.data.projects[0]?.id || "";
     state.backend = "ready";
-    sessionStorage.setItem(TOKEN_KEY, result.token);
     $("#loginForm").reset();
     $("#rememberInput").checked = true;
     showDashboard();
@@ -453,8 +551,15 @@ async function refreshData() {
     updateConnection("Google Sheets activo", "ok");
     render();
   } catch (error) {
-    setMessage(error.message, "error");
-    updateConnection("Error de sincronizacion", "error");
+    if (/sesion/i.test(error.message)) {
+      logout("Sesion expirada. Entra de nuevo para sincronizar Google Sheets.");
+      return;
+    }
+    setMessage(
+      "Google Sheets no respondio en este intento. Se mantienen los datos cargados; pulsa Sincronizar Sheets otra vez.",
+      "warning",
+    );
+    updateConnection("Reintentar Sheets", "local");
   } finally {
     setBusy(false);
   }
@@ -491,7 +596,7 @@ async function resumeSession() {
     sessionStorage.removeItem(TOKEN_KEY);
     state.token = "";
     showLogin("Inicia sesion para conectar ProN con Google Sheets.");
-    updateConnection("Reintentar Sheets", "error");
+    updateConnection("Reintentar Sheets", "local");
   }
 }
 
@@ -514,8 +619,12 @@ async function submitAction(action, payload, successMessage) {
     updateConnection("Google Sheets activo", "ok");
     render();
   } catch (error) {
-    setMessage(error.message, "error");
-    updateConnection("Error de sincronizacion", "error");
+    if (/sesion/i.test(error.message)) {
+      logout("Sesion expirada. Entra de nuevo para guardar en Google Sheets.");
+      return;
+    }
+    setMessage(error.message, "warning");
+    updateConnection("Reintentar Sheets", "local");
   } finally {
     setBusy(false);
   }
@@ -667,31 +776,37 @@ function normalizeData(data) {
 
 function filteredProjects() {
   const search = state.search.toLowerCase();
-  return state.data.projects.filter((project) =>
+  return scopedProjects().filter((project) =>
     `${project.name} ${project.type} ${project.status}`.toLowerCase().includes(search),
   );
 }
 
 function filteredMovements() {
   const search = state.search.toLowerCase();
-  return state.data.movements.filter((movement) =>
+  return scopedMovements().filter((movement) =>
     `${projectName(movement.projectId)} ${movement.type} ${movement.category} ${movement.concept}`
       .toLowerCase()
       .includes(search),
   );
 }
 
-function totals() {
-  const income = state.data.movements
+function totals(projectId = summaryProjectId()) {
+  const movements = projectId
+    ? state.data.movements.filter((movement) => movement.projectId === projectId)
+    : state.data.movements;
+  const projects = projectId
+    ? state.data.projects.filter((project) => project.id === projectId)
+    : state.data.projects;
+  const income = movements
     .filter((movement) => movement.type === "Ingreso")
     .reduce((sum, movement) => sum + numberValue(movement.amount), 0);
-  const expenses = state.data.movements
+  const expenses = movements
     .filter((movement) => movement.type === "Gasto")
     .reduce((sum, movement) => sum + numberValue(movement.amount), 0);
-  const investment = state.data.movements
+  const investment = movements
     .filter((movement) => movement.type === "Inversion")
     .reduce((sum, movement) => sum + numberValue(movement.amount), 0);
-  const budget = state.data.projects.reduce(
+  const budget = projects.reduce(
     (sum, project) => sum + numberValue(project.budget),
     0,
   );
@@ -729,6 +844,10 @@ function el(tag, attrs = {}, children = []) {
       node.textContent = value;
     } else if (key.startsWith("on") && typeof value === "function") {
       node.addEventListener(key.slice(2).toLowerCase(), value);
+    } else if (value === true) {
+      node.setAttribute(key, "");
+    } else if (value === false || value === null || value === undefined) {
+      return;
     } else {
       node.setAttribute(key, value);
     }
@@ -748,6 +867,7 @@ function replaceChildren(selector, children) {
 function render() {
   renderMetrics();
   renderProjectSelects();
+  renderCategorySelects();
   renderSummary();
   renderProjects();
   renderMovements();
@@ -760,10 +880,12 @@ function render() {
 
 function renderMetrics() {
   const current = totals();
-  const activeProjects = state.data.projects.filter(
+  const projects = scopedProjects();
+  const inventory = scopedInventory();
+  const activeProjects = projects.filter(
     (project) => project.status !== "Archivado",
   ).length;
-  const inventoryValue = state.data.inventory.reduce(
+  const inventoryValue = inventory.reduce(
     (sum, item) =>
       sum + numberValue(item.quantity) * numberValue(item.unitCost),
     0,
@@ -773,9 +895,9 @@ function renderMetrics() {
   $("#metricIncome").textContent = money(current.income);
   $("#metricInvestment").textContent = money(current.investment);
   $("#metricExpenses").textContent = money(current.expenses);
-  $("#balanceBadge").textContent = `Balance ${money(current.balance)}`;
+  $("#balanceBadge").textContent = `${currentScopeLabel()} ${money(current.balance)}`;
   setTextIfExists("#metricActiveProjects", String(activeProjects));
-  setTextIfExists("#metricPartners", String(state.data.partners.length));
+  setTextIfExists("#metricPartners", String(scopedPartners().length));
   setTextIfExists("#metricInventoryValue", money(inventoryValue));
   setTextIfExists("#metricAudit", String(state.data.audit.length));
 }
@@ -786,13 +908,134 @@ function renderProjectSelects() {
   );
   const projectSelect = $("#projectSelect");
   projectSelect.replaceChildren(...options);
+  if (!state.data.projects.some((project) => project.id === state.selectedProjectId)) {
+    state.selectedProjectId = state.data.projects[0]?.id || "";
+  }
   projectSelect.value = state.selectedProjectId;
+
+  const scopeOptions = [
+    el("option", { value: SUMMARY_ALL, text: "Todo ProN" }),
+    ...options.map((option) => option.cloneNode(true)),
+  ];
+  const scopeSelect = $("#summaryScopeSelect");
+  scopeSelect.replaceChildren(...scopeOptions);
+  if (
+    state.summaryScopeId !== SUMMARY_ALL &&
+    !state.data.projects.some((project) => project.id === state.summaryScopeId)
+  ) {
+    state.summaryScopeId = SUMMARY_ALL;
+  }
+  scopeSelect.value = state.summaryScopeId;
+
+  const userProjectInput = $("#userProjectInput");
+  userProjectInput.replaceChildren(
+    el("option", { value: "", text: "Todos los proyectos" }),
+    ...options.map((option) => option.cloneNode(true)),
+  );
+  userProjectInput.value = state.selectedProjectId;
+}
+
+function renderCategorySelects() {
+  const movementForm = $("#movementForm");
+  const movementType = movementForm.elements.type.value || "Gasto";
+  const movementCategory = movementForm.elements.category;
+  const currentMovementCategory = movementCategory.value;
+  movementCategory.replaceChildren(
+    ...MOVEMENT_CATEGORIES[movementType].map((category) =>
+      el("option", { value: category, text: category }),
+    ),
+  );
+  movementCategory.value = MOVEMENT_CATEGORIES[movementType].includes(currentMovementCategory)
+    ? currentMovementCategory
+    : MOVEMENT_CATEGORIES[movementType][0];
+
+  const inventoryCategory = $("#inventoryForm").elements.category;
+  const currentInventoryCategory = inventoryCategory.value;
+  inventoryCategory.replaceChildren(
+    ...INVENTORY_CATEGORIES.map((category) =>
+      el("option", { value: category, text: category }),
+    ),
+  );
+  inventoryCategory.value = INVENTORY_CATEGORIES.includes(currentInventoryCategory)
+    ? currentInventoryCategory
+    : INVENTORY_CATEGORIES[0];
+}
+
+function renderPie(selector, items) {
+  const total = items.reduce((sum, item) => sum + Math.max(0, item.value), 0);
+  let start = 0;
+  const gradient = total
+    ? items
+        .map((item) => {
+          const end = start + (Math.max(0, item.value) / total) * 100;
+          const segment = `${item.color} ${start.toFixed(2)}% ${end.toFixed(2)}%`;
+          start = end;
+          return segment;
+        })
+        .join(", ")
+    : "#e8eeeb 0 100%";
+  $(selector).style.background = `conic-gradient(${gradient})`;
+}
+
+function renderLegend(selector, items) {
+  replaceChildren(
+    selector,
+    items.map((item) =>
+      el("div", {}, [
+        el("i", { style: `background: ${item.color}` }),
+        el("span", { text: item.label }),
+        el("strong", { text: money(item.value) }),
+      ]),
+    ),
+  );
 }
 
 function renderSummary() {
+  const current = totals();
+  const projects = scopedProjects();
+  const movements = scopedMovements();
+  const auditRows = state.data.audit.filter((entry) => inSummaryScope(entry.projectId));
+  const financeItems = [
+    { label: "Ingresos", value: current.income, color: PIE_COLORS[1] },
+    { label: "Inversiones", value: current.investment, color: PIE_COLORS[2] },
+    { label: "Gastos", value: current.expenses, color: PIE_COLORS[3] },
+  ];
+  const budgetItems = projects.map((project, index) => ({
+    label: project.name,
+    value: numberValue(project.budget),
+    color: PIE_COLORS[index % PIE_COLORS.length],
+  }));
+
+  renderPie("#financePie", financeItems);
+  renderLegend("#financeLegend", financeItems);
+  renderPie("#budgetPie", budgetItems);
+  renderLegend("#budgetLegend", budgetItems);
+
+  replaceChildren(
+    "#planBoard",
+    projects.map((project) => {
+      const projectMovements = movements.filter((movement) => movement.projectId === project.id);
+      const projectSpent = projectMovements
+        .filter((movement) => movement.type === "Gasto")
+        .reduce((sum, movement) => sum + numberValue(movement.amount), 0);
+      const projectCapital = projectMovements
+        .filter((movement) => movement.type !== "Gasto")
+        .reduce((sum, movement) => sum + numberValue(movement.amount), 0);
+
+      return el("article", {}, [
+        el("span", { text: project.type }),
+        el("strong", { text: project.name }),
+        el("p", { text: project.objective || "Sin objetivo operativo registrado." }),
+        el("p", {
+          text: `Capital ${money(projectCapital)} | Gasto ${money(projectSpent)} | Estado ${project.status}`,
+        }),
+      ]);
+    }),
+  );
+
   replaceChildren(
     "#breakevenList",
-    state.data.projects.map((project) => {
+    projects.map((project) => {
       const percent = selectedTotals(project.id);
       return el("div", {}, [
         el("small", { text: project.name }),
@@ -804,7 +1047,7 @@ function renderSummary() {
 
   replaceChildren(
     "#activityList",
-    state.data.movements.slice(0, 7).map((movement) =>
+    movements.slice(0, 7).map((movement) =>
       el("li", {}, [
         el("b", { text: movement.concept }),
         el("strong", { text: money(movement.amount) }),
@@ -817,7 +1060,7 @@ function renderSummary() {
 
   replaceChildren(
     "#auditList",
-    state.data.audit.slice(0, 7).map((entry) =>
+    auditRows.slice(0, 7).map((entry) =>
       el("li", {}, [
         el("strong", { text: entry.action }),
         el("span", { text: `${entry.createdAt || ""} - ${entry.detail}` }),
@@ -825,11 +1068,10 @@ function renderSummary() {
     ),
   );
 
-  const current = totals();
-  const activeProjects = state.data.projects.filter(
+  const activeProjects = projects.filter(
     (project) => project.status !== "Archivado",
   ).length;
-  const newestMovement = state.data.movements[0];
+  const newestMovement = movements[0];
   const dbReady = state.backend === "ready" && !isLocalSession();
 
   replaceChildren("#executiveSignals", [
@@ -884,9 +1126,17 @@ function renderProjects() {
               text: "Abrir",
               onclick: () => {
                 state.selectedProjectId = project.id;
+                state.summaryScopeId = project.id;
                 $("#projectSelect").value = project.id;
-                setMessage(`Proyecto activo: ${project.name}.`);
+                $("#summaryScopeSelect").value = project.id;
+                setMessage(`Vista activa: ${project.name}.`);
+                render();
               },
+            }),
+            el("button", {
+              type: "button",
+              text: "Descargar",
+              onclick: () => downloadProjectReport(project.id),
             }),
             el("button", {
               type: "button",
@@ -899,6 +1149,18 @@ function renderProjects() {
                     status: project.status === "Archivado" ? "Activo" : "Archivado",
                   },
                   "Estado del proyecto actualizado.",
+                ),
+            }),
+            el("button", {
+              type: "button",
+              class: "danger",
+              text: "Eliminar",
+              onclick: () =>
+                confirmDelete(
+                  `Eliminar ${project.name} y sus registros vinculados?`,
+                  "delete-project",
+                  { projectId: project.id },
+                  "Proyecto eliminado de Google Sheets.",
                 ),
             }),
           ]),
@@ -919,6 +1181,27 @@ function renderMovements() {
         el("td", { text: movement.category }),
         el("td", { text: movement.concept }),
         el("td", { text: money(movement.amount) }),
+        el("td", {}, [
+          el("div", { class: "row-actions" }, [
+            el("button", {
+              type: "button",
+              text: "Descargar",
+              onclick: () => downloadMovementReceipt(movement.id),
+            }),
+            el("button", {
+              type: "button",
+              class: "danger",
+              text: "Eliminar",
+              onclick: () =>
+                confirmDelete(
+                  `Eliminar movimiento ${movement.concept}?`,
+                  "delete-movement",
+                  { movementId: movement.id },
+                  "Movimiento eliminado de Google Sheets.",
+                ),
+            }),
+          ]),
+        ]),
       ]),
     ),
   );
@@ -927,7 +1210,7 @@ function renderMovements() {
 function renderPartners() {
   replaceChildren(
     "#partnersCards",
-    state.data.partners.map((partner) =>
+    scopedPartners().map((partner) =>
       el("div", {}, [
         el("span", { text: partner.type }),
         el("b", { text: partner.name }),
@@ -935,6 +1218,25 @@ function renderPartners() {
         el("strong", {
           text: `${money(partner.contribution)} - ${numberValue(partner.participation)}%`,
         }),
+        el("div", { class: "card-actions" }, [
+          el("button", {
+            type: "button",
+            text: "Descargar",
+            onclick: () => downloadPartnerCard(partner.id),
+          }),
+          el("button", {
+            type: "button",
+            class: "danger",
+            text: "Eliminar",
+            onclick: () =>
+              confirmDelete(
+                `Eliminar socio ${partner.name}?`,
+                "delete-partner",
+                { partnerId: partner.id },
+                "Socio eliminado de Google Sheets.",
+              ),
+          }),
+        ]),
       ]),
     ),
   );
@@ -943,13 +1245,34 @@ function renderPartners() {
 function renderInventory() {
   replaceChildren(
     "#inventoryBody",
-    state.data.inventory.map((item) =>
+    scopedInventory().map((item) =>
       el("tr", {}, [
         el("td", { text: projectName(item.projectId) }),
         el("td", { text: item.item }),
         el("td", { text: item.category }),
         el("td", { text: String(item.quantity) }),
         el("td", { text: money(numberValue(item.quantity) * numberValue(item.unitCost)) }),
+        el("td", {}, [
+          el("div", { class: "row-actions" }, [
+            el("button", {
+              type: "button",
+              text: "Descargar",
+              onclick: () => downloadInventoryCard(item.id),
+            }),
+            el("button", {
+              type: "button",
+              class: "danger",
+              text: "Eliminar",
+              onclick: () =>
+                confirmDelete(
+                  `Eliminar item ${item.item}?`,
+                  "delete-inventory",
+                  { inventoryId: item.id },
+                  "Inventario eliminado de Google Sheets.",
+                ),
+            }),
+          ]),
+        ]),
       ]),
     ),
   );
@@ -958,14 +1281,38 @@ function renderInventory() {
 function renderUsers() {
   replaceChildren(
     "#usersBody",
-    state.data.users.map((user) =>
-      el("tr", {}, [
-        el("td", { text: user.name }),
-        el("td", { text: user.role }),
-        el("td", { text: projectName(user.projectId) }),
-        el("td", { text: user.status }),
-      ]),
-    ),
+    state.data.users
+      .filter((user) => inSummaryScope(user.projectId))
+      .map((user) =>
+        el("tr", {}, [
+          el("td", { text: user.name }),
+          el("td", { text: user.role }),
+          el("td", { text: projectName(user.projectId) }),
+          el("td", { text: user.status }),
+          el("td", {}, [
+            el("div", { class: "row-actions" }, [
+              el("button", {
+                type: "button",
+                text: "Descargar",
+                onclick: () => downloadUserCard(user.id),
+              }),
+              el("button", {
+                type: "button",
+                class: "danger",
+                text: "Eliminar",
+                disabled: user.role === "Superadministrador",
+                onclick: () =>
+                  confirmDelete(
+                    `Eliminar usuario ${user.name}?`,
+                    "delete-user",
+                    { userId: user.id },
+                    "Usuario eliminado de Google Sheets.",
+                  ),
+              }),
+            ]),
+          ]),
+        ]),
+      ),
   );
 }
 
@@ -973,7 +1320,7 @@ function renderReports() {
   const current = totals();
   replaceChildren(
     "#chartBars",
-    state.data.projects.map((project) => {
+    scopedProjects().map((project) => {
       const width = Math.max(
         8,
         Math.round((numberValue(project.budget) / Math.max(current.budget, 1)) * 100),
@@ -1022,10 +1369,24 @@ function logout(message = "Sesion cerrada.") {
   checkBackend();
 }
 
-function buildCsv() {
+function safeFileName(value) {
+  return String(value || "pron")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "");
+}
+
+function rowsForProject(collection, projectId) {
+  return projectId ? collection.filter((row) => row.projectId === projectId) : collection;
+}
+
+function buildCsv(projectId = summaryProjectId()) {
+  const movements = rowsForProject(state.data.movements, projectId);
   const rows = [
     ["Proyecto", "Tipo", "Categoria", "Concepto", "Valor", "Fecha", "Estado"],
-    ...state.data.movements.map((movement) => [
+    ...movements.map((movement) => [
       projectName(movement.projectId),
       movement.type,
       movement.category,
@@ -1039,10 +1400,16 @@ function buildCsv() {
   return rows.map((row) => row.map(csvEscape).join(",")).join("\n");
 }
 
-function buildReport() {
-  const current = totals();
+function buildReport(projectId = summaryProjectId()) {
+  const current = totals(projectId);
+  const projects = projectId
+    ? state.data.projects.filter((project) => project.id === projectId)
+    : state.data.projects;
+  const movements = rowsForProject(state.data.movements, projectId);
+  const partners = rowsForProject(state.data.partners, projectId);
+  const inventory = rowsForProject(state.data.inventory, projectId);
   return [
-    "ProN - Informe ejecutivo",
+    `ProN - Informe ejecutivo (${projectId ? projectName(projectId) : "Todo ProN"})`,
     `Fecha: ${today()}`,
     `Presupuesto total: ${money(current.budget)}`,
     `Ingresos: ${money(current.income)}`,
@@ -1051,19 +1418,164 @@ function buildReport() {
     `Balance: ${money(current.balance)}`,
     "",
     "Proyectos:",
-    ...state.data.projects.map(
-      (project) => `- ${project.name}: ${project.status}, ${money(project.budget)}`,
+    ...projects.map(
+      (project) =>
+        `- ${project.name}: ${project.status}, ${money(project.budget)} | ${project.objective}`,
+    ),
+    "",
+    "Movimientos:",
+    ...movements.map(
+      (movement) =>
+        `- ${movement.movementDate} | ${projectName(movement.projectId)} | ${movement.type} | ${movement.category} | ${movement.concept} | ${money(movement.amount)}`,
+    ),
+    "",
+    "Socios:",
+    ...partners.map(
+      (partner) =>
+        `- ${partner.name} | ${partner.type} | ${money(partner.contribution)} | ${numberValue(partner.participation)}%`,
+    ),
+    "",
+    "Inventario:",
+    ...inventory.map(
+      (item) =>
+        `- ${item.item} | ${item.category} | ${item.quantity} x ${money(item.unitCost)} | ${projectName(item.projectId)}`,
     ),
   ].join("\n");
+}
+
+function downloadScopeReport() {
+  const label = safeFileName(currentScopeLabel());
+  downloadText(`pron-${label}.txt`, "text/plain;charset=utf-8", buildReport());
+}
+
+function downloadProjectReport(projectId) {
+  const label = safeFileName(projectName(projectId));
+  downloadText(`pron-proyecto-${label}.txt`, "text/plain;charset=utf-8", buildReport(projectId));
+}
+
+function downloadMovementReceipt(movementId) {
+  const movement = state.data.movements.find((item) => item.id === movementId);
+  if (!movement) {
+    return;
+  }
+  downloadText(
+    `pron-movimiento-${safeFileName(movement.concept)}.txt`,
+    "text/plain;charset=utf-8",
+    [
+      "ProN - Comprobante de movimiento",
+      `Proyecto: ${projectName(movement.projectId)}`,
+      `Fecha: ${movement.movementDate}`,
+      `Tipo: ${movement.type}`,
+      `Categoria: ${movement.category}`,
+      `Concepto: ${movement.concept}`,
+      `Valor: ${money(movement.amount)}`,
+      `Estado: ${movement.status}`,
+    ].join("\n"),
+  );
+}
+
+function downloadPartnerCard(partnerId) {
+  const partner = state.data.partners.find((item) => item.id === partnerId);
+  if (!partner) {
+    return;
+  }
+  downloadText(
+    `pron-socio-${safeFileName(partner.name)}.txt`,
+    "text/plain;charset=utf-8",
+    [
+      "ProN - Ficha de socio",
+      `Nombre: ${partner.name}`,
+      `Tipo: ${partner.type}`,
+      `Proyecto: ${projectName(partner.projectId)}`,
+      `Aporte: ${money(partner.contribution)}`,
+      `Participacion: ${numberValue(partner.participation)}%`,
+      `Estado: ${partner.status}`,
+    ].join("\n"),
+  );
+}
+
+function downloadInventoryCard(inventoryId) {
+  const item = state.data.inventory.find((entry) => entry.id === inventoryId);
+  if (!item) {
+    return;
+  }
+  downloadText(
+    `pron-inventario-${safeFileName(item.item)}.txt`,
+    "text/plain;charset=utf-8",
+    [
+      "ProN - Ficha de inventario",
+      `Item: ${item.item}`,
+      `Categoria: ${item.category}`,
+      `Proyecto: ${projectName(item.projectId)}`,
+      `Cantidad: ${item.quantity}`,
+      `Costo unitario: ${money(item.unitCost)}`,
+      `Valor total: ${money(numberValue(item.quantity) * numberValue(item.unitCost))}`,
+      `Estado: ${item.status}`,
+    ].join("\n"),
+  );
+}
+
+function downloadUserCard(userId) {
+  const user = state.data.users.find((item) => item.id === userId);
+  if (!user) {
+    return;
+  }
+  downloadText(
+    `pron-usuario-${safeFileName(user.name)}.txt`,
+    "text/plain;charset=utf-8",
+    [
+      "ProN - Ficha de usuario",
+      `Nombre: ${user.name}`,
+      `Rol: ${user.role}`,
+      `Proyecto: ${projectName(user.projectId)}`,
+      `Estado: ${user.status}`,
+      `Creado: ${user.createdAt}`,
+    ].join("\n"),
+  );
+}
+
+function downloadJson() {
+  downloadText(
+    `pron-datos-${safeFileName(currentScopeLabel())}.json`,
+    "application/json;charset=utf-8",
+    JSON.stringify(
+      {
+        scope: currentScopeLabel(),
+        exportedAt: new Date().toISOString(),
+        projects: scopedProjects(),
+        movements: scopedMovements(),
+        partners: scopedPartners(),
+        inventory: scopedInventory(),
+        users: state.data.users.filter((user) => inSummaryScope(user.projectId)),
+      },
+      null,
+      2,
+    ),
+  );
+}
+
+function confirmDelete(question, action, payload, successMessage) {
+  if (!window.confirm(question)) {
+    return;
+  }
+
+  submitAction(action, payload, successMessage);
 }
 
 function bindEvents() {
   $("#loginForm").addEventListener("submit", login);
   $("#refreshButton").addEventListener("click", refreshData);
+  $("#exportTopButton").addEventListener("click", downloadScopeReport);
+  $("#downloadScopeButton").addEventListener("click", downloadScopeReport);
   $("#logoutButton").addEventListener("click", () => logout());
   $("#topLogoutButton").addEventListener("click", () => logout());
+  $("#summaryScopeSelect").addEventListener("change", (event) => {
+    state.summaryScopeId = event.target.value;
+    render();
+  });
   $("#projectSelect").addEventListener("change", (event) => {
     state.selectedProjectId = event.target.value;
+    $("#userProjectInput").value = event.target.value;
     render();
   });
   $("#searchInput").addEventListener("input", (event) => {
@@ -1071,6 +1583,7 @@ function bindEvents() {
     renderProjects();
     renderMovements();
   });
+  $("#movementForm").elements.type.addEventListener("change", renderCategorySelects);
 
   $$("nav button").forEach((button) => {
     button.addEventListener("click", () => {
@@ -1155,7 +1668,7 @@ function bindEvents() {
       "create-user",
       {
         ...data,
-        projectId: state.selectedProjectId,
+        projectId: data.projectId || state.selectedProjectId,
       },
       "Usuario agregado en Google Sheets.",
     );
@@ -1163,10 +1676,17 @@ function bindEvents() {
   });
 
   $("#exportCsvButton").addEventListener("click", () => {
-    downloadText("movimientos-pron.csv", "text/csv;charset=utf-8", buildCsv());
+    downloadText(
+      `movimientos-pron-${safeFileName(currentScopeLabel())}.csv`,
+      "text/csv;charset=utf-8",
+      buildCsv(),
+    );
   });
   $("#exportTxtButton").addEventListener("click", () => {
-    downloadText("informe-pron.txt", "text/plain;charset=utf-8", buildReport());
+    downloadScopeReport();
+  });
+  $("#exportJsonButton").addEventListener("click", () => {
+    downloadJson();
   });
 }
 

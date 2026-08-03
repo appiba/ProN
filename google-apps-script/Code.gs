@@ -91,7 +91,6 @@ function handlePayload_(payload) {
       app: CONFIG.APP_NAME,
       sheetId: CONFIG.SHEET_ID,
       timezone: CONFIG.TIMEZONE,
-      data: loadData_(),
     };
   }
 
@@ -132,6 +131,31 @@ function handlePayload_(payload) {
 
   if (action === "update-project-status") {
     updateProjectStatus_(payload);
+    return { ok: true, user: user, data: loadData_() };
+  }
+
+  if (action === "delete-project") {
+    deleteProject_(payload);
+    return { ok: true, user: user, data: loadData_() };
+  }
+
+  if (action === "delete-movement") {
+    deleteMovement_(payload);
+    return { ok: true, user: user, data: loadData_() };
+  }
+
+  if (action === "delete-partner") {
+    deletePartner_(payload);
+    return { ok: true, user: user, data: loadData_() };
+  }
+
+  if (action === "delete-inventory") {
+    deleteInventory_(payload);
+    return { ok: true, user: user, data: loadData_() };
+  }
+
+  if (action === "delete-user") {
+    deleteUser_(payload);
     return { ok: true, user: user, data: loadData_() };
   }
 
@@ -179,7 +203,6 @@ function login_(payload) {
     ok: true,
     token: token,
     user: superadmin_(),
-    data: loadData_(),
   };
 }
 
@@ -305,6 +328,70 @@ function updateProjectStatus_(payload) {
     updatedAt: today_(),
   });
   audit_("Estado actualizado", "Estado cambiado a " + status + ".", projectId);
+}
+
+function deleteProject_(payload) {
+  var projectId = text_(payload.projectId);
+
+  if (!projectId) {
+    throw new Error("Proyecto obligatorio para eliminar.");
+  }
+
+  var projectName = projectNameById_(projectId);
+  deleteObjectById_("Projects", projectId);
+  deleteRowsByColumnValue_("Movements", "projectId", projectId);
+  deleteRowsByColumnValue_("Partners", "projectId", projectId);
+  deleteRowsByColumnValue_("Inventory", "projectId", projectId);
+  deleteRowsByColumnValue_("Users", "projectId", projectId);
+  audit_("Proyecto eliminado", projectName + " y sus registros vinculados fueron eliminados.", projectId);
+}
+
+function deleteMovement_(payload) {
+  var movementId = text_(payload.movementId);
+
+  if (!movementId) {
+    throw new Error("Movimiento obligatorio para eliminar.");
+  }
+
+  deleteObjectById_("Movements", movementId);
+  audit_("Movimiento eliminado", movementId + " fue eliminado.", "");
+}
+
+function deletePartner_(payload) {
+  var partnerId = text_(payload.partnerId);
+
+  if (!partnerId) {
+    throw new Error("Socio obligatorio para eliminar.");
+  }
+
+  deleteObjectById_("Partners", partnerId);
+  audit_("Socio eliminado", partnerId + " fue eliminado.", "");
+}
+
+function deleteInventory_(payload) {
+  var inventoryId = text_(payload.inventoryId);
+
+  if (!inventoryId) {
+    throw new Error("Inventario obligatorio para eliminar.");
+  }
+
+  deleteObjectById_("Inventory", inventoryId);
+  audit_("Inventario eliminado", inventoryId + " fue eliminado.", "");
+}
+
+function deleteUser_(payload) {
+  var userId = text_(payload.userId);
+
+  if (!userId) {
+    throw new Error("Usuario obligatorio para eliminar.");
+  }
+
+  if (userId === "usr-owner") {
+    throw new Error("El superadministrador no se puede eliminar.");
+  }
+
+  deleteObjectById_("Users", userId);
+  audit_("Usuario eliminado", userId + " fue eliminado.", "");
 }
 
 function loadData_() {
@@ -664,6 +751,49 @@ function updateObjectById_(sheetName, id, patch) {
       sheet.getRange(matchIndex, column).setValue(patch[key]);
     }
   });
+}
+
+function deleteObjectById_(sheetName, id) {
+  var deleted = deleteRowsByColumnValue_(sheetName, "id", id);
+
+  if (!deleted) {
+    throw new Error("Registro no encontrado.");
+  }
+}
+
+function deleteRowsByColumnValue_(sheetName, columnName, value) {
+  var headers = HEADERS[sheetName];
+  var column = headers.indexOf(columnName) + 1;
+  var sheet = sheet_(sheetName);
+  var lastRow = sheet.getLastRow();
+  var deleted = 0;
+
+  if (column <= 0 || lastRow <= 1) {
+    return deleted;
+  }
+
+  var values = sheet.getRange(2, column, lastRow - 1, 1).getValues();
+
+  for (var index = values.length - 1; index >= 0; index -= 1) {
+    if (String(values[index][0]) === String(value)) {
+      sheet.deleteRow(index + 2);
+      deleted += 1;
+    }
+  }
+
+  return deleted;
+}
+
+function projectNameById_(projectId) {
+  var rows = readObjects_("Projects");
+
+  for (var index = 0; index < rows.length; index += 1) {
+    if (String(rows[index].id) === String(projectId)) {
+      return rows[index].name || projectId;
+    }
+  }
+
+  return projectId;
 }
 
 function createToken_(remember) {

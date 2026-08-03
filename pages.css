@@ -498,7 +498,7 @@ nav button:hover {
 
 .toolbar {
   display: grid;
-  grid-template-columns: minmax(260px, 1fr) minmax(260px, 0.9fr) auto;
+  grid-template-columns: minmax(220px, 0.75fr) minmax(240px, 0.85fr) minmax(260px, 1fr) auto;
   gap: 14px;
   align-items: end;
   padding: 14px;
@@ -546,7 +546,12 @@ nav button:hover {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 14px;
+}
+
+.panel-title button {
+  width: auto;
 }
 
 .pill {
@@ -678,6 +683,77 @@ nav button:hover {
   font-size: 13px;
 }
 
+.pie-chart {
+  width: min(210px, 100%);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: conic-gradient(#e8eeeb 0 100%);
+  box-shadow:
+    inset 0 0 0 16px #fff,
+    0 16px 34px rgba(16, 32, 29, 0.1);
+  justify-self: center;
+}
+
+.legend-list {
+  display: grid;
+  gap: 8px;
+}
+
+.legend-list div {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 8px;
+  align-items: center;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.legend-list i {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--teal);
+}
+
+.legend-list strong {
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+.plan-board {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.plan-board article {
+  display: grid;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--teal);
+  border-radius: 8px;
+  background: #fbfcfb;
+  padding: 14px;
+}
+
+.plan-board span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.plan-board strong {
+  color: var(--ink);
+}
+
+.plan-board p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
 .table-wrap {
   width: 100%;
   overflow-x: auto;
@@ -685,8 +761,9 @@ nav button:hover {
 
 .row-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
-  min-width: 170px;
+  min-width: 260px;
 }
 
 .row-actions button {
@@ -696,6 +773,13 @@ nav button:hover {
   background: #fff;
   color: var(--ink);
   padding: 0 10px;
+}
+
+.row-actions button.danger,
+.cards button.danger {
+  border-color: rgba(217, 95, 67, 0.35);
+  background: var(--red-soft);
+  color: #8b2e1d;
 }
 
 .cards {
@@ -711,6 +795,24 @@ nav button:hover {
   border-radius: 8px;
   background: #fff;
   padding: 14px;
+}
+
+.cards .card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  border: 0;
+  background: transparent;
+  padding: 0;
+}
+
+.cards button {
+  width: auto;
+  min-height: 34px;
+  border-color: var(--line);
+  background: #fff;
+  color: var(--ink);
+  padding: 0 10px;
 }
 
 .cards span,
@@ -786,6 +888,10 @@ nav button:hover {
   }
 
   .cards {
+    grid-template-columns: 1fr;
+  }
+
+  .plan-board {
     grid-template-columns: 1fr;
   }
 
