@@ -32,6 +32,7 @@ type Movement = {
   movementDate: string;
   status: string;
   createdAt: string;
+  partnerId?: string;
 };
 
 type Partner = {
@@ -193,6 +194,35 @@ function projectName(data: ERPData, projectId: string | null) {
   return data.projects.find((project) => project.id === projectId)?.name ?? "Proyecto";
 }
 
+function partnerName(data: ERPData, partnerId?: string) {
+  if (!partnerId) {
+    return "Sin socio";
+  }
+
+  return data.partners.find((partner) => partner.id === partnerId)?.name ?? "Socio eliminado";
+}
+
+function partnerStats(data: ERPData, partner: Partner) {
+  const movements = data.movements.filter((movement) => movement.partnerId === partner.id);
+  const income = movements
+    .filter((movement) => movement.type === "Ingreso")
+    .reduce((sum, movement) => sum + movement.amount, 0);
+  const expenses = movements
+    .filter((movement) => movement.type === "Gasto")
+    .reduce((sum, movement) => sum + movement.amount, 0);
+  const investment = movements
+    .filter((movement) => movement.type === "Inversion")
+    .reduce((sum, movement) => sum + movement.amount, 0);
+
+  return {
+    income,
+    expenses,
+    investment,
+    totalAvailable: partner.contribution + income + investment - expenses,
+    movements: movements.length,
+  };
+}
+
 function downloadText(filename: string, mime: string, content: string) {
   const blob = new Blob([content], { type: mime });
   const url = URL.createObjectURL(blob);
@@ -209,9 +239,10 @@ function escapeCsv(value: string | number | null) {
 
 function buildMovementCsv(data: ERPData) {
   const rows = [
-    ["Proyecto", "Tipo", "Categoria", "Concepto", "Valor", "Fecha", "Estado"],
+    ["Proyecto", "Socio", "Tipo", "Categoria", "Concepto", "Valor", "Fecha", "Estado"],
     ...data.movements.map((movement) => [
       projectName(data, movement.projectId),
+      partnerName(data, movement.partnerId),
       movement.type,
       movement.category,
       movement.concept,
@@ -265,6 +296,7 @@ export default function ProNApp() {
     concept: "",
     amount: "",
     movementDate: today(),
+    partnerId: "",
   });
   const [userForm, setUserForm] = useState({
     name: "",
@@ -422,6 +454,11 @@ export default function ProNApp() {
     [data.movements, selectedProjectId],
   );
 
+  const projectPartners = useMemo(
+    () => data.partners.filter((partner) => partner.projectId === selectedProjectId),
+    [data.partners, selectedProjectId],
+  );
+
   const filteredProjects = useMemo(() => {
     return data.projects.filter((project) => {
       const matchesQuery = `${project.name} ${project.type}`
@@ -554,6 +591,7 @@ export default function ProNApp() {
             concept: movementForm.concept,
             amount: Number.isFinite(amount) ? amount : 0,
             movementDate: movementForm.movementDate,
+            partnerId: movementForm.partnerId,
             status: "Registrado",
             createdAt: today(),
           },
@@ -567,6 +605,7 @@ export default function ProNApp() {
       concept: "",
       amount: "",
       movementDate: today(),
+      partnerId: "",
     });
   }
 
@@ -1100,6 +1139,22 @@ export default function ProNApp() {
                   placeholder="Categoria"
                   required
                 />
+                <select
+                  value={movementForm.partnerId}
+                  onChange={(event) =>
+                    setMovementForm((current) => ({
+                      ...current,
+                      partnerId: event.target.value,
+                    }))
+                  }
+                >
+                  <option value="">Socio / responsable (opcional)</option>
+                  {projectPartners.map((partner) => (
+                    <option key={partner.id} value={partner.id}>
+                      {partner.name} - {partner.type}
+                    </option>
+                  ))}
+                </select>
                 <input
                   value={movementForm.concept}
                   onChange={(event) =>
@@ -1153,6 +1208,7 @@ export default function ProNApp() {
                       <th>Fecha</th>
                       <th>Tipo</th>
                       <th>Categoria</th>
+                      <th>Socio</th>
                       <th>Concepto</th>
                       <th>Valor</th>
                     </tr>
@@ -1163,6 +1219,7 @@ export default function ProNApp() {
                         <td>{movement.movementDate}</td>
                         <td>{movement.type}</td>
                         <td>{movement.category}</td>
+                        <td>{partnerName(data, movement.partnerId)}</td>
                         <td>{movement.concept}</td>
                         <td>{formatMoney(movement.amount)}</td>
                       </tr>
@@ -1182,15 +1239,24 @@ export default function ProNApp() {
               </div>
               <div className="cards-grid">
                 {data.partners.map((partner) => (
-                  <div className="data-card" key={partner.id}>
-                    <span>{partner.type}</span>
-                    <strong>{partner.name}</strong>
-                    <small>{projectName(data, partner.projectId)}</small>
-                    <div className="card-row">
-                      <b>{formatMoney(partner.contribution)}</b>
-                      <b>{partner.participation}%</b>
-                    </div>
-                  </div>
+                  (() => {
+                    const stats = partnerStats(data, partner);
+                    return (
+                      <div className="data-card" key={partner.id}>
+                        <span>{partner.type}</span>
+                        <strong>{partner.name}</strong>
+                        <small>{projectName(data, partner.projectId)}</small>
+                        <div className="card-row">
+                          <b>{formatMoney(partner.contribution)}</b>
+                          <b>{partner.participation}%</b>
+                        </div>
+                        <small>Aportes/Inversiones: {formatMoney(stats.investment)}</small>
+                        <small>Gastos asignados: {formatMoney(stats.expenses)}</small>
+                        <small>Disponible: {formatMoney(stats.totalAvailable)}</small>
+                        <small>{stats.movements} movimiento(s) detallado(s)</small>
+                      </div>
+                    );
+                  })()
                 ))}
               </div>
             </article>

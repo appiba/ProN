@@ -187,6 +187,47 @@ function projectName(projectId) {
   );
 }
 
+function partnerById(partnerId) {
+  return state.data.partners.find((partner) => partner.id === partnerId) || null;
+}
+
+function partnerName(partnerId) {
+  if (!partnerId) {
+    return "Sin socio";
+  }
+
+  return partnerById(partnerId)?.name || "Socio eliminado";
+}
+
+function projectPartners(projectId) {
+  return state.data.partners.filter((partner) => !projectId || partner.projectId === projectId);
+}
+
+function partnerStats(partnerId) {
+  const movements = state.data.movements.filter((movement) => movement.partnerId === partnerId);
+  const income = movements
+    .filter((movement) => movement.type === "Ingreso")
+    .reduce((sum, movement) => sum + numberValue(movement.amount), 0);
+  const expenses = movements
+    .filter((movement) => movement.type === "Gasto")
+    .reduce((sum, movement) => sum + numberValue(movement.amount), 0);
+  const investment = movements
+    .filter((movement) => movement.type === "Inversion")
+    .reduce((sum, movement) => sum + numberValue(movement.amount), 0);
+  const partner = partnerById(partnerId);
+  const contribution = numberValue(partner?.contribution);
+
+  return {
+    movements,
+    income,
+    expenses,
+    investment,
+    contribution,
+    movementBalance: income + investment - expenses,
+    totalAvailable: contribution + income + investment - expenses,
+  };
+}
+
 function accessName(projectId) {
   return projectId ? projectName(projectId) : "Todos los proyectos";
 }
@@ -873,6 +914,7 @@ function applyLocalAction(action, payload) {
         concept: payload.concept,
         amount: numberValue(payload.amount),
         movementDate: payload.movementDate || today(),
+        partnerId: payload.partnerId || "",
         status: payload.status || "Registrado",
         createdAt: today(),
       },
@@ -1022,7 +1064,7 @@ function filteredProjects() {
 function filteredMovements() {
   const search = state.search.toLowerCase();
   return scopedMovements().filter((movement) =>
-    `${projectName(movement.projectId)} ${movement.type} ${movement.category} ${movement.concept}`
+    `${projectName(movement.projectId)} ${partnerName(movement.partnerId)} ${movement.type} ${movement.category} ${movement.concept}`
       .toLowerCase()
       .includes(search),
   );
@@ -1106,6 +1148,7 @@ function render() {
   applySessionScope();
   renderMetrics();
   renderProjectSelects();
+  renderPartnerSelects();
   renderCategorySelects();
   renderSummary();
   renderProjects();
@@ -1178,6 +1221,32 @@ function renderProjectSelects() {
     ...projectOptions.map((option) => option.cloneNode(true)),
   );
   userProjectInput.value = state.selectedProjectId;
+}
+
+function renderPartnerSelects() {
+  populatePartnerSelect($("#movementForm"), state.selectedProjectId);
+  populatePartnerSelect($("#detailMovementForm"), state.detailProjectId || state.selectedProjectId);
+  populatePartnerSelect($("#detailAdminForm"), state.detailProjectId || state.selectedProjectId);
+}
+
+function populatePartnerSelect(form, projectId) {
+  if (!form || !form.elements.partnerId) {
+    return;
+  }
+
+  const partnerSelect = form.elements.partnerId;
+  const currentPartnerId = partnerSelect.value;
+  const partners = projectPartners(projectId);
+
+  partnerSelect.replaceChildren(
+    el("option", { value: "", text: "Socio / responsable (opcional)" }),
+    ...partners.map((partner) =>
+      el("option", { value: partner.id, text: `${partner.name} - ${partner.type}` }),
+    ),
+  );
+  partnerSelect.value = partners.some((partner) => partner.id === currentPartnerId)
+    ? currentPartnerId
+    : "";
 }
 
 function renderCategorySelects() {
@@ -1603,6 +1672,7 @@ function renderMovements() {
         el("td", { text: projectName(movement.projectId) }),
         el("td", { text: movement.type }),
         el("td", { text: movement.category }),
+        el("td", { text: partnerName(movement.partnerId) }),
         el("td", { text: movement.concept }),
         el("td", { text: money(movement.amount) }),
         el("td", {}, [
@@ -1631,38 +1701,63 @@ function renderMovements() {
   );
 }
 
+function renderPartnerCard(partner) {
+  const stats = partnerStats(partner.id);
+
+  return el("div", {}, [
+    el("span", { text: partner.type }),
+    el("b", { text: partner.name }),
+    el("small", { text: projectName(partner.projectId) }),
+    el("strong", {
+      text: `Aporte base ${money(partner.contribution)} - ${numberValue(partner.participation)}%`,
+    }),
+    el("ul", { class: "partner-metrics" }, [
+      el("li", {}, [
+        el("span", { text: "Aportes/Inversiones" }),
+        el("b", { text: money(stats.investment) }),
+      ]),
+      el("li", {}, [
+        el("span", { text: "Ingresos asignados" }),
+        el("b", { text: money(stats.income) }),
+      ]),
+      el("li", {}, [
+        el("span", { text: "Gastos asignados" }),
+        el("b", { text: money(stats.expenses) }),
+      ]),
+      el("li", {}, [
+        el("span", { text: "Disponible con aporte base" }),
+        el("b", { text: money(stats.totalAvailable) }),
+      ]),
+    ]),
+    el("small", {
+      text: `${stats.movements.length} movimiento(s) detallado(s) para este socio.`,
+    }),
+    el("div", { class: "card-actions" }, [
+      el("button", {
+        type: "button",
+        text: "Descargar",
+        onclick: () => downloadPartnerCard(partner.id),
+      }),
+      el("button", {
+        type: "button",
+        class: "danger",
+        text: "Eliminar",
+        onclick: () =>
+          confirmDelete(
+            `Eliminar socio ${partner.name}?`,
+            "delete-partner",
+            { partnerId: partner.id },
+            "Socio eliminado.",
+          ),
+      }),
+    ]),
+  ]);
+}
+
 function renderPartners() {
   replaceChildren(
     "#partnersCards",
-    scopedPartners().map((partner) =>
-      el("div", {}, [
-        el("span", { text: partner.type }),
-        el("b", { text: partner.name }),
-        el("small", { text: projectName(partner.projectId) }),
-        el("strong", {
-          text: `${money(partner.contribution)} - ${numberValue(partner.participation)}%`,
-        }),
-        el("div", { class: "card-actions" }, [
-          el("button", {
-            type: "button",
-            text: "Descargar",
-            onclick: () => downloadPartnerCard(partner.id),
-          }),
-          el("button", {
-            type: "button",
-            class: "danger",
-            text: "Eliminar",
-            onclick: () =>
-              confirmDelete(
-                `Eliminar socio ${partner.name}?`,
-                "delete-partner",
-                { partnerId: partner.id },
-                "Socio eliminado.",
-              ),
-          }),
-        ]),
-      ]),
-    ),
+    scopedPartners().map((partner) => renderPartnerCard(partner)),
   );
 }
 
@@ -1893,6 +1988,7 @@ function renderAdministration(project, movements) {
         ]),
         el("td", { text: movement.type }),
         el("td", { text: movement.category }),
+        el("td", { text: partnerName(movement.partnerId) }),
         el("td", { text: movement.concept }),
         el("td", { text: money(movement.amount) }),
         el("td", {}, [
@@ -1954,6 +2050,7 @@ function renderProjectDetail() {
         el("td", { text: movement.movementDate }),
         el("td", { text: movement.type }),
         el("td", { text: movement.category }),
+        el("td", { text: partnerName(movement.partnerId) }),
         el("td", { text: movement.concept }),
         el("td", { text: money(movement.amount) }),
         el("td", {}, [
@@ -1983,34 +2080,7 @@ function renderProjectDetail() {
 
   replaceChildren(
     "#detailPartnersCards",
-    partners.map((partner) =>
-      el("div", {}, [
-        el("span", { text: partner.type }),
-        el("b", { text: partner.name }),
-        el("strong", {
-          text: `${money(partner.contribution)} - ${numberValue(partner.participation)}%`,
-        }),
-        el("div", { class: "card-actions" }, [
-          el("button", {
-            type: "button",
-            text: "PDF",
-            onclick: () => downloadPartnerCard(partner.id),
-          }),
-          el("button", {
-            type: "button",
-            class: "danger",
-            text: "Eliminar",
-            onclick: () =>
-              confirmDelete(
-                `Eliminar socio ${partner.name}?`,
-                "delete-partner",
-                { partnerId: partner.id },
-                "Socio eliminado.",
-              ),
-          }),
-        ]),
-      ]),
-    ),
+    partners.map((partner) => renderPartnerCard(partner)),
   );
 
   replaceChildren(
@@ -2339,9 +2409,10 @@ function rowsForProject(collection, projectId) {
 function buildCsv(projectId = summaryProjectId()) {
   const movements = rowsForProject(state.data.movements, projectId);
   const rows = [
-    ["Proyecto", "Tipo", "Categoria", "Concepto", "Valor", "Fecha", "Estado"],
+    ["Proyecto", "Socio", "Tipo", "Categoria", "Concepto", "Valor", "Fecha", "Estado"],
     ...movements.map((movement) => [
       projectName(movement.projectId),
+      partnerName(movement.partnerId),
       movement.type,
       movement.category,
       movement.concept,
@@ -2644,14 +2715,16 @@ function buildProjectReportLines(analysis) {
       "Movimientos detallados:",
       analysis.movements,
       (movement) =>
-        `- ${movement.movementDate} | ${movement.type} | ${movement.category} | ${movement.concept} | ${money(movement.amount)} | ${movement.status}`,
+        `- ${movement.movementDate} | ${movement.type} | ${movement.category} | Socio: ${partnerName(movement.partnerId)} | ${movement.concept} | ${money(movement.amount)} | ${movement.status}`,
     ),
     "",
     ...reportLines(
       "Socios, inversionistas y aliados:",
       analysis.partners,
-      (partner) =>
-        `- ${partner.name} | ${partner.type} | Aporte ${money(partner.contribution)} | Participacion ${numberValue(partner.participation)}% | Estado ${partner.status}`,
+      (partner) => {
+        const stats = partnerStats(partner.id);
+        return `- ${partner.name} | ${partner.type} | Aporte base ${money(partner.contribution)} | Participacion ${numberValue(partner.participation)}% | Aportes/Inversiones mov. ${money(stats.investment)} | Ingresos ${money(stats.income)} | Gastos ${money(stats.expenses)} | Disponible ${money(stats.totalAvailable)} | Movimientos ${stats.movements.length} | Estado ${partner.status}`;
+      },
     ),
     "",
     ...reportLines(
@@ -2767,7 +2840,7 @@ function buildReport(projectId = summaryProjectId()) {
       "ADMINISTRACION OPERATIVA CONSOLIDADA",
       adminRows,
       (movement) =>
-        `- ${movement.movementDate} | ${movement.status || "Registrado"} | ${movement.type} | ${movement.category} | ${movement.concept} | ${money(movement.amount)}`,
+        `- ${movement.movementDate} | ${movement.status || "Registrado"} | ${movement.type} | ${movement.category} | Socio: ${partnerName(movement.partnerId)} | ${movement.concept} | ${money(movement.amount)}`,
     ),
     "",
     ...reportLines("TOTALES POR CATEGORIA", categoryRows, (row) => `- ${row.label}: ${money(row.value)}`),
@@ -2792,14 +2865,16 @@ function buildReport(projectId = summaryProjectId()) {
       "MOVIMIENTOS CONSOLIDADOS",
       scope.movements,
       (movement) =>
-        `- ${movement.movementDate} | ${projectName(movement.projectId)} | ${movement.type} | ${movement.category} | ${movement.concept} | ${money(movement.amount)} | ${movement.status}`,
+        `- ${movement.movementDate} | ${projectName(movement.projectId)} | Socio: ${partnerName(movement.partnerId)} | ${movement.type} | ${movement.category} | ${movement.concept} | ${money(movement.amount)} | ${movement.status}`,
     ),
     "",
     ...reportLines(
       "SOCIOS CONSOLIDADOS",
       scope.partners,
-      (partner) =>
-        `- ${partner.name} | ${partner.type} | ${money(partner.contribution)} | ${numberValue(partner.participation)}% | ${projectName(partner.projectId)}`,
+      (partner) => {
+        const stats = partnerStats(partner.id);
+        return `- ${partner.name} | ${partner.type} | ${projectName(partner.projectId)} | Aporte base ${money(partner.contribution)} | Aportes/Inversiones ${money(stats.investment)} | Gastos ${money(stats.expenses)} | Disponible ${money(stats.totalAvailable)} | ${numberValue(partner.participation)}%`;
+      },
     ),
     "",
     ...reportLines(
@@ -3057,6 +3132,7 @@ function downloadMovementReceipt(movementId) {
     "ProN - Comprobante de movimiento",
     [
       `Proyecto: ${projectName(movement.projectId)}`,
+      `Socio/responsable: ${partnerName(movement.partnerId)}`,
       `Fecha: ${movement.movementDate}`,
       `Tipo: ${movement.type}`,
       `Categoria: ${movement.category}`,
@@ -3072,6 +3148,7 @@ function downloadPartnerCard(partnerId) {
   if (!partner) {
     return;
   }
+  const stats = partnerStats(partner.id);
   downloadPdf(
     `pron-socio-${safeFileName(partner.name)}.pdf`,
     "ProN - Ficha de socio",
@@ -3079,9 +3156,22 @@ function downloadPartnerCard(partnerId) {
       `Nombre: ${partner.name}`,
       `Tipo: ${partner.type}`,
       `Proyecto: ${projectName(partner.projectId)}`,
-      `Aporte: ${money(partner.contribution)}`,
+      `Aporte base registrado: ${money(partner.contribution)}`,
       `Participacion: ${numberValue(partner.participation)}%`,
       `Estado: ${partner.status}`,
+      `Aportes/Inversiones asignadas: ${money(stats.investment)}`,
+      `Ingresos asignados: ${money(stats.income)}`,
+      `Gastos asignados: ${money(stats.expenses)}`,
+      `Balance de movimientos: ${money(stats.movementBalance)}`,
+      `Disponible con aporte base: ${money(stats.totalAvailable)}`,
+      "",
+      "MOVIMIENTOS ASIGNADOS",
+      ...(stats.movements.length
+        ? stats.movements.map(
+            (movement) =>
+              `- ${movement.movementDate} | ${movement.type} | ${movement.category} | ${movement.concept} | ${money(movement.amount)} | ${movement.status}`,
+          )
+        : ["- Sin movimientos asignados a este socio."]),
     ].join("\n"),
   );
 }

@@ -41,6 +41,7 @@ type MovementRow = {
   movement_date: string;
   status: string;
   created_at: string;
+  partner_id: string | null;
 };
 
 type PartnerRow = {
@@ -96,6 +97,7 @@ type ActionPayload = {
   concept?: string;
   amount?: number;
   movementDate?: string;
+  partnerId?: string;
   role?: string;
   email?: string;
   username?: string;
@@ -156,7 +158,8 @@ async function ensureDatabase(db: D1DatabaseLike) {
       amount REAL NOT NULL DEFAULT 0,
       movement_date TEXT NOT NULL,
       status TEXT NOT NULL DEFAULT 'Registrado',
-      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      partner_id TEXT
     )`),
     db.prepare(`CREATE TABLE IF NOT EXISTS partners (
       id TEXT PRIMARY KEY,
@@ -207,6 +210,7 @@ async function ensureDatabase(db: D1DatabaseLike) {
   ]);
 
   await ensureUserColumns(db);
+  await ensureMovementColumns(db);
 
   const cleanMarker = await db
     .prepare("SELECT value FROM app_meta WHERE key = ?")
@@ -263,6 +267,14 @@ async function ensureUserColumns(db: D1DatabaseLike) {
   }
 }
 
+async function ensureMovementColumns(db: D1DatabaseLike) {
+  try {
+    await db.prepare("ALTER TABLE movements ADD COLUMN partner_id TEXT").run();
+  } catch {
+    // Column already exists in an initialized database.
+  }
+}
+
 async function loadData(db: D1DatabaseLike) {
   const [projects, movements, partners, inventory, users, audit] =
     await Promise.all([
@@ -313,6 +325,7 @@ async function loadData(db: D1DatabaseLike) {
         movementDate: movement.movement_date,
         status: movement.status,
         createdAt: movement.created_at,
+        partnerId: movement.partner_id ?? "",
       })) ?? [],
     partners:
       partners.results?.map((partner) => ({
@@ -457,8 +470,8 @@ export async function POST(request: Request) {
       await db
         .prepare(
           `INSERT INTO movements
-          (id, project_id, type, category, concept, amount, movement_date, status)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          (id, project_id, type, category, concept, amount, movement_date, status, partner_id)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .bind(
           newId("mov"),
@@ -468,7 +481,8 @@ export async function POST(request: Request) {
           concept,
           amount,
           textValue(payload.movementDate, new Date().toISOString().slice(0, 10)),
-          "Registrado",
+          textValue(payload.status, "Registrado"),
+          textValue(payload.partnerId) || null,
         )
         .run();
       await audit(db, "Movimiento registrado", `${type}: ${concept}.`, projectId);

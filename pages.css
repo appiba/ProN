@@ -998,6 +998,28 @@ nav button:hover {
   color: var(--muted);
 }
 
+.partner-metrics {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.partner-metrics li {
+  display: grid;
+  grid-template-columns: minmax(140px, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 6px;
+}
+
+.partner-metrics li:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
 .bar-chart {
   display: grid;
   gap: 14px;

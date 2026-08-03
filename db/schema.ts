@@ -27,6 +27,7 @@ export const movements = sqliteTable("movements", {
   movementDate: text("movement_date").notNull(),
   status: text("status").notNull().default("Registrado"),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  partnerId: text("partner_id"),
 });
 
 export const partners = sqliteTable("partners", {

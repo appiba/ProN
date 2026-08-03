@@ -39,6 +39,7 @@ var HEADERS = {
     "movementDate",
     "status",
     "createdAt",
+    "partnerId",
   ],
   Partners: [
     "id",
@@ -321,6 +322,7 @@ function createMovement_(payload) {
     movementDate: text_(payload.movementDate, today_()),
     status: text_(payload.status, "Registrado"),
     createdAt: today_(),
+    partnerId: text_(payload.partnerId),
   });
   audit_("Movimiento registrado", type + ": " + concept + ".", projectId);
 }
@@ -503,6 +505,7 @@ function loadData_() {
         movementDate: row.movementDate,
         status: row.status,
         createdAt: row.createdAt,
+        partnerId: row.partnerId || "",
       };
     }),
     partners: readObjects_("Partners").map(function (row) {
