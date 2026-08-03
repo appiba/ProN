@@ -127,6 +127,7 @@ test("ships the GitHub Pages and Apps Script integration", async () => {
   assert.match(index, /reportBudgetPie/);
   assert.match(index, /reportCandles/);
   assert.match(index, /Descargar informe PDF/);
+  assert.match(index, /20260803-informe-completo/);
   assert.doesNotMatch(
     index,
     /Informe TXT|Descargar JSON|Google Sheet|Sincronizar Sheets|Apps Script no respondio|Base de datos local activa|Failed to fetch/i,
@@ -135,6 +136,12 @@ test("ships the GitHub Pages and Apps Script integration", async () => {
   assert.match(pages, /downloadProjectReport/);
   assert.match(pages, /downloadPdf/);
   assert.match(pages, /buildReportPdf/);
+  assert.match(pages, /pron-informe-completo/);
+  assert.match(pages, /projectReportAnalysis/);
+  assert.match(pages, /projectionText/);
+  assert.match(pages, /reportConclusions/);
+  assert.match(pages, /FALTANTES CRITICOS POR PROYECTO/);
+  assert.match(pages, /DETALLE COMPLETO POR PROYECTO/);
   assert.match(pages, /drawPdfPie/);
   assert.match(pages, /drawPdfCandleChart/);
   assert.match(pages, /enterDashboardNow/);

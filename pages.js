@@ -2276,15 +2276,294 @@ function categoryReportRows(movements) {
     .map(([label, value]) => ({ label, value }));
 }
 
+function percent(value) {
+  return `${Math.round(numberValue(value))}%`;
+}
+
+function daysBetween(startDate, endDate) {
+  if (!startDate || !endDate) {
+    return 0;
+  }
+
+  const start = new Date(`${startDate}T00:00:00`);
+  const end = new Date(`${endDate}T00:00:00`);
+  const diff = Math.round((end - start) / 86400000);
+  return Number.isFinite(diff) ? Math.max(1, diff + 1) : 0;
+}
+
+function movementRange(movements) {
+  const dates = movements
+    .map((movement) => movement.movementDate)
+    .filter(Boolean)
+    .sort();
+
+  if (!dates.length) {
+    return { from: "", to: "", days: 0 };
+  }
+
+  return {
+    from: dates[0],
+    to: dates[dates.length - 1],
+    days: daysBetween(dates[0], dates[dates.length - 1]),
+  };
+}
+
+function totalsForMovements(movements, projects = []) {
+  const income = movements
+    .filter((movement) => movement.type === "Ingreso")
+    .reduce((sum, movement) => sum + numberValue(movement.amount), 0);
+  const expenses = movements
+    .filter((movement) => movement.type === "Gasto")
+    .reduce((sum, movement) => sum + numberValue(movement.amount), 0);
+  const investment = movements
+    .filter((movement) => movement.type === "Inversion")
+    .reduce((sum, movement) => sum + numberValue(movement.amount), 0);
+  const budget = projects.reduce((sum, project) => sum + numberValue(project.budget), 0);
+
+  return {
+    income,
+    expenses,
+    investment,
+    budget,
+    balance: income + investment - expenses,
+    operationalBalance: income - expenses,
+  };
+}
+
+function projectReportAnalysis(project, scope) {
+  const movements = scope.movements.filter((movement) => movement.projectId === project.id);
+  const partners = scope.partners.filter((partner) => partner.projectId === project.id);
+  const inventory = scope.inventory.filter((item) => item.projectId === project.id);
+  const users = scope.users.filter((user) => !user.projectId || user.projectId === project.id);
+  const audit = scope.audit.filter((entry) => !entry.projectId || entry.projectId === project.id);
+  const current = totalsForMovements(movements, [project]);
+  const range = movementRange(movements);
+  const adminTotals = administrationTotals(movements);
+  const inventoryValue = inventory.reduce(
+    (sum, item) => sum + numberValue(item.quantity) * numberValue(item.unitCost),
+    0,
+  );
+  const capital = current.income + current.investment;
+  const budgetGap = Math.max(0, current.budget - capital);
+  const operatingGap = Math.max(0, current.expenses - current.income);
+  const budgetProgress = current.budget ? Math.min(100, (capital / current.budget) * 100) : 0;
+  const spendProgress = current.budget ? Math.min(100, (current.expenses / current.budget) * 100) : 0;
+  const dailyIncome = range.days ? current.income / range.days : 0;
+  const dailyExpenses = range.days ? current.expenses / range.days : 0;
+  const projectedIncome30 = dailyIncome * 30;
+  const projectedExpenses30 = dailyExpenses * 30;
+  const projectedBalance30 = current.balance + projectedIncome30 - projectedExpenses30;
+  const monthlyNet = projectedIncome30 - projectedExpenses30;
+  const monthsToCoverBudget = monthlyNet > 0 && budgetGap > 0
+    ? Math.ceil(budgetGap / monthlyNet)
+    : 0;
+  const completionChecks = [
+    numberValue(project.budget) > 0,
+    Boolean(project.objective),
+    movements.length > 0,
+    current.investment > 0,
+    current.income > 0,
+    current.expenses > 0,
+    partners.length > 0,
+    inventory.length > 0,
+    canAdministrate(project),
+  ];
+  const completion = Math.round(
+    (completionChecks.filter(Boolean).length / completionChecks.length) * 100,
+  );
+  const missing = [
+    numberValue(project.budget) > 0 ? "" : "Registrar presupuesto.",
+    project.objective ? "" : "Completar objetivo operativo.",
+    movements.length ? "" : "Registrar al menos un movimiento financiero.",
+    current.investment > 0 ? "" : "Registrar inversion o capital inicial.",
+    current.income > 0 ? "" : "Registrar ingresos o cobros.",
+    current.expenses > 0 ? "" : "Registrar gastos, pagos o cuentas por pagar.",
+    partners.length ? "" : "Vincular socios, inversionistas o aliados.",
+    inventory.length ? "" : "Registrar inventario o activos.",
+    canAdministrate(project) ? "" : "Cambiar estado a Aprobado, Inversion completada, Negocio activo o En funcion para administrar.",
+    budgetGap > 0 ? `Falta ${money(budgetGap)} para igualar capital/ingresos con el presupuesto.` : "",
+    operatingGap > 0 ? `Falta ${money(operatingGap)} para igualar ingresos operativos con gastos.` : "",
+  ].filter(Boolean);
+
+  return {
+    project,
+    movements,
+    partners,
+    inventory,
+    users,
+    audit,
+    current,
+    range,
+    adminTotals,
+    inventoryValue,
+    capital,
+    budgetGap,
+    operatingGap,
+    budgetProgress,
+    spendProgress,
+    projectedIncome30,
+    projectedExpenses30,
+    projectedBalance30,
+    monthlyNet,
+    monthsToCoverBudget,
+    completion,
+    missing,
+  };
+}
+
+function projectConclusion(analysis) {
+  if (!analysis.movements.length) {
+    return "El proyecto esta creado, pero todavia no tiene base financiera para medir rendimiento. El siguiente paso es cargar presupuesto, inversion, gastos e ingresos reales.";
+  }
+
+  if (analysis.current.balance < 0) {
+    return `El proyecto tiene balance negativo de ${money(Math.abs(analysis.current.balance))}. Conviene revisar gastos, pagos pendientes y fuentes de ingreso antes de ampliar operaciones.`;
+  }
+
+  if (analysis.operatingGap > 0) {
+    return `El proyecto se sostiene con capital o inversion, pero los ingresos aun no cubren los gastos. Debe cerrar una brecha operativa de ${money(analysis.operatingGap)}.`;
+  }
+
+  if (analysis.budgetGap > 0) {
+    return `El proyecto mantiene balance positivo, pero aun falta ${money(analysis.budgetGap)} para cubrir el presupuesto previsto con capital e ingresos registrados.`;
+  }
+
+  return "El proyecto esta equilibrado frente al presupuesto registrado y puede revisarse para operar o escalar con control administrativo.";
+}
+
+function projectionText(analysis) {
+  if (!analysis.range.days) {
+    return "Sin movimientos suficientes para proyectar. Registra fechas, ingresos y gastos para calcular tendencia.";
+  }
+
+  const base = `Con ${analysis.range.days} dias de historial (${analysis.range.from} a ${analysis.range.to}), la proyeccion a 30 dias estima ingresos por ${money(analysis.projectedIncome30)}, gastos por ${money(analysis.projectedExpenses30)} y balance final de ${money(analysis.projectedBalance30)}.`;
+  if (analysis.monthsToCoverBudget > 0) {
+    return `${base} A este ritmo faltarian aproximadamente ${analysis.monthsToCoverBudget} meses para cubrir la brecha del presupuesto.`;
+  }
+  if (analysis.monthlyNet <= 0 && analysis.budgetGap > 0) {
+    return `${base} Con la tendencia actual no se cubre la brecha del presupuesto; se necesitan mas ingresos o menor gasto operativo.`;
+  }
+  return base;
+}
+
+function buildProjectReportLines(analysis) {
+  const categoryRows = categoryReportRows(analysis.movements);
+
+  return [
+    `PROYECTO: ${analysis.project.name}`,
+    `Tipo: ${analysis.project.type}`,
+    `Estado: ${projectStatus(analysis.project)}`,
+    `Objetivo: ${analysis.project.objective || "Sin objetivo operativo registrado."}`,
+    `Presupuesto: ${money(analysis.current.budget)}`,
+    `Capital registrado (ingresos + inversiones): ${money(analysis.capital)}`,
+    `Ingresos: ${money(analysis.current.income)}`,
+    `Inversiones: ${money(analysis.current.investment)}`,
+    `Gastos: ${money(analysis.current.expenses)}`,
+    `Balance total: ${money(analysis.current.balance)}`,
+    `Balance operativo (ingresos - gastos): ${money(analysis.current.operationalBalance)}`,
+    `Avance contra presupuesto: ${percent(analysis.budgetProgress)}`,
+    `Uso del presupuesto en gastos: ${percent(analysis.spendProgress)}`,
+    `Valor inventario/activos: ${money(analysis.inventoryValue)}`,
+    `Pagado: ${money(analysis.adminTotals.paid)}`,
+    `Pendiente por pagar: ${money(analysis.adminTotals.pending)}`,
+    `Nivel de completado del expediente: ${percent(analysis.completion)}`,
+    `Proyeccion: ${projectionText(analysis)}`,
+    `Conclusion: ${projectConclusion(analysis)}`,
+    "",
+    ...reportLines("Faltantes por completar o igualar:", analysis.missing, (item) => `- ${item}`),
+    "",
+    ...reportLines("Totales por categoria:", categoryRows, (row) => `- ${row.label}: ${money(row.value)}`),
+    "",
+    ...reportLines(
+      "Movimientos detallados:",
+      analysis.movements,
+      (movement) =>
+        `- ${movement.movementDate} | ${movement.type} | ${movement.category} | ${movement.concept} | ${money(movement.amount)} | ${movement.status}`,
+    ),
+    "",
+    ...reportLines(
+      "Socios, inversionistas y aliados:",
+      analysis.partners,
+      (partner) =>
+        `- ${partner.name} | ${partner.type} | Aporte ${money(partner.contribution)} | Participacion ${numberValue(partner.participation)}% | Estado ${partner.status}`,
+    ),
+    "",
+    ...reportLines(
+      "Inventario y activos:",
+      analysis.inventory,
+      (item) =>
+        `- ${item.item} | ${item.category} | Cantidad ${item.quantity} | Unitario ${money(item.unitCost)} | Total ${money(numberValue(item.quantity) * numberValue(item.unitCost))} | Estado ${item.status}`,
+    ),
+    "",
+    ...reportLines(
+      "Usuarios vinculados:",
+      analysis.users,
+      (user) => `- ${user.name} | ${user.role} | ${user.status}`,
+    ),
+    "",
+    ...reportLines(
+      "Auditoria del proyecto:",
+      analysis.audit,
+      (entry) => `- ${entry.createdAt || ""} | ${entry.action} | ${entry.detail}`,
+    ),
+  ];
+}
+
+function reportConclusions(scope, analyses) {
+  if (!scope.projects.length) {
+    return [
+      "No hay proyectos registrados todavia.",
+      "El informe esta limpio y listo para empezar con datos reales.",
+      "Crea el primer proyecto y luego registra inversion, gastos, ingresos, socios e inventario para obtener proyecciones utiles.",
+    ];
+  }
+
+  const withNegativeBalance = analyses.filter((analysis) => analysis.current.balance < 0);
+  const withOperatingGap = analyses.filter((analysis) => analysis.operatingGap > 0);
+  const incomplete = analyses.filter((analysis) => analysis.completion < 100);
+  const pending = analyses.reduce((sum, analysis) => sum + analysis.adminTotals.pending, 0);
+  const lines = [
+    `Se analizaron ${scope.projects.length} proyecto(s) con ${scope.movements.length} movimiento(s) registrados.`,
+    `Balance consolidado: ${money(scope.current.balance)}. Pendiente administrativo: ${money(pending)}.`,
+  ];
+
+  if (withNegativeBalance.length) {
+    lines.push(
+      `Atencion: ${withNegativeBalance.length} proyecto(s) tienen balance negativo y requieren revision de gastos o ingresos.`,
+    );
+  }
+  if (withOperatingGap.length) {
+    lines.push(
+      `${withOperatingGap.length} proyecto(s) aun no igualan ingresos operativos con gastos.`,
+    );
+  }
+  if (incomplete.length) {
+    lines.push(
+      `${incomplete.length} proyecto(s) tienen informacion pendiente para completar expediente, administracion o proyeccion.`,
+    );
+  }
+  if (!withNegativeBalance.length && !withOperatingGap.length && !incomplete.length) {
+    lines.push("Los proyectos registrados estan completos y equilibrados segun la informacion cargada.");
+  }
+
+  return lines;
+}
+
 function buildReport(projectId = summaryProjectId()) {
   const scope = reportScope(projectId);
   const categoryRows = categoryReportRows(scope.movements);
   const adminTotals = administrationTotals(scope.movements);
   const adminRows = administrationMovements(scope.movements);
+  const analyses = scope.projects.map((project) => projectReportAnalysis(project, scope));
+  const pendingTotal = analyses.reduce((sum, analysis) => sum + analysis.adminTotals.pending, 0);
+  const budgetGapTotal = analyses.reduce((sum, analysis) => sum + analysis.budgetGap, 0);
+  const operatingGapTotal = analyses.reduce((sum, analysis) => sum + analysis.operatingGap, 0);
 
   return [
-    `ProN - Informe ejecutivo (${scope.label})`,
+    `ProN - Informe completo (${scope.label})`,
     `Fecha: ${today()}`,
+    "",
+    "RESUMEN GENERAL",
     `Presupuesto total: ${money(scope.current.budget)}`,
     `Ingresos: ${money(scope.current.income)}`,
     `Inversiones: ${money(scope.current.investment)}`,
@@ -2295,55 +2574,83 @@ function buildReport(projectId = summaryProjectId()) {
     `Valor inventario: ${money(scope.inventoryValue)}`,
     `Gasto operativo: ${money(adminTotals.expenses)}`,
     `Pagado: ${money(adminTotals.paid)}`,
-    `Pendiente: ${money(adminTotals.pending)}`,
+    `Pendiente: ${money(pendingTotal)}`,
     `Ingreso operativo: ${money(adminTotals.income)}`,
+    `Brecha total para igualar presupuesto: ${money(budgetGapTotal)}`,
+    `Brecha total para equilibrio operativo: ${money(operatingGapTotal)}`,
     `Eventos de auditoria: ${scope.audit.length}`,
     "",
+    ...reportLines("CONCLUSIONES EJECUTIVAS", reportConclusions(scope, analyses), (line) => `- ${line}`),
+    "",
     ...reportLines(
-      "Administracion operativa:",
+      "PROYECCIONES CONSOLIDADAS",
+      analyses,
+      (analysis) => `- ${analysis.project.name}: ${projectionText(analysis)}`,
+    ),
+    "",
+    ...reportLines(
+      "FALTANTES CRITICOS POR PROYECTO",
+      analyses,
+      (analysis) =>
+        `- ${analysis.project.name}: ${
+          analysis.missing.length ? analysis.missing.join(" ") : "Sin faltantes criticos segun los datos cargados."
+        }`,
+    ),
+    "",
+    ...reportLines(
+      "ADMINISTRACION OPERATIVA CONSOLIDADA",
       adminRows,
       (movement) =>
         `- ${movement.movementDate} | ${movement.status || "Registrado"} | ${movement.type} | ${movement.category} | ${movement.concept} | ${money(movement.amount)}`,
     ),
     "",
-    ...reportLines("Totales por categoria:", categoryRows, (row) => `- ${row.label}: ${money(row.value)}`),
+    ...reportLines("TOTALES POR CATEGORIA", categoryRows, (row) => `- ${row.label}: ${money(row.value)}`),
     "",
     ...reportLines(
-      "Proyectos:",
+      "PROYECTOS REGISTRADOS",
       scope.projects,
       (project) =>
         `- ${project.name}: ${project.status}, ${money(project.budget)} | ${project.objective}`,
     ),
     "",
+    "DETALLE COMPLETO POR PROYECTO",
+    ...(analyses.length
+      ? analyses.flatMap((analysis, index) => [
+          "",
+          `--- Proyecto ${index + 1} de ${analyses.length} ---`,
+          ...buildProjectReportLines(analysis),
+        ])
+      : ["- Sin proyectos registrados."]),
+    "",
     ...reportLines(
-      "Movimientos:",
+      "MOVIMIENTOS CONSOLIDADOS",
       scope.movements,
       (movement) =>
         `- ${movement.movementDate} | ${projectName(movement.projectId)} | ${movement.type} | ${movement.category} | ${movement.concept} | ${money(movement.amount)} | ${movement.status}`,
     ),
     "",
     ...reportLines(
-      "Socios:",
+      "SOCIOS CONSOLIDADOS",
       scope.partners,
       (partner) =>
         `- ${partner.name} | ${partner.type} | ${money(partner.contribution)} | ${numberValue(partner.participation)}% | ${projectName(partner.projectId)}`,
     ),
     "",
     ...reportLines(
-      "Inventario:",
+      "INVENTARIO CONSOLIDADO",
       scope.inventory,
       (item) =>
         `- ${item.item} | ${item.category} | ${item.quantity} x ${money(item.unitCost)} | ${money(numberValue(item.quantity) * numberValue(item.unitCost))} | ${projectName(item.projectId)}`,
     ),
     "",
     ...reportLines(
-      "Usuarios:",
+      "USUARIOS Y PERMISOS",
       scope.users,
       (user) => `- ${user.name} | ${user.role} | ${projectName(user.projectId)} | ${user.status}`,
     ),
     "",
     ...reportLines(
-      "Auditoria:",
+      "AUDITORIA",
       scope.audit,
       (entry) => `- ${entry.createdAt || ""} | ${entry.action} | ${entry.detail}`,
     ),
@@ -2483,7 +2790,10 @@ function buildExecutiveReportPage(projectId = summaryProjectId()) {
   const financeItems = typeReportItems(scope.movements);
   const budgetItems = budgetReportItems(scope.projects);
   const adminTotals = administrationTotals(scope.movements);
+  const analyses = scope.projects.map((project) => projectReportAnalysis(project, scope));
   const activeProjects = scope.projects.filter((project) => project.status !== "Archivado").length;
+  const budgetGapTotal = analyses.reduce((sum, analysis) => sum + analysis.budgetGap, 0);
+  const operatingGapTotal = analyses.reduce((sum, analysis) => sum + analysis.operatingGap, 0);
   const cardWidth = 172;
   const cardHeight = 54;
   const gap = 12;
@@ -2495,15 +2805,15 @@ function buildExecutiveReportPage(projectId = summaryProjectId()) {
     ["Inversiones", money(scope.current.investment), PIE_COLORS[2]],
     ["Gastos", money(scope.current.expenses), PIE_COLORS[3]],
     ["Balance", money(scope.current.balance), "#10201d"],
+    ["Brecha presup.", money(budgetGapTotal), "#d95f43"],
+    ["Brecha oper.", money(operatingGapTotal), "#f2b84b"],
     ["Proyectos", String(activeProjects), "#5b7f67"],
-    ["Socios", String(scope.partners.length), "#7c5c9e"],
-    ["Inventario", money(scope.inventoryValue), "#315f9f"],
     ["Pendiente", money(adminTotals.pending), "#d95f43"],
   ];
   const commands = [
     pdfRect(0, 0, 612, 792, { fill: "#f6f8f5", stroke: null }),
     pdfText("ProN", 36, 754, 20, "#10201d", true),
-    pdfText(`Informe ejecutivo - ${scope.label}`, 36, 734, 11, "#65736f"),
+    pdfText(`Informe completo - ${scope.label}`, 36, 734, 11, "#65736f"),
     pdfText(`Generado ${new Date().toLocaleString("es-EC")}`, 398, 754, 8, "#65736f"),
     pdfLine(36, 720, 576, 720, "#dbe3df", 1),
   ];
@@ -2539,7 +2849,7 @@ function buildExecutiveReportPage(projectId = summaryProjectId()) {
   commands.push(pdfText("Indicadores por proyecto", 36, 122, 12, "#10201d", true));
   commands.push(pdfRect(36, 42, 540, 70, { fill: "#ffffff", stroke: "#dbe3df" }));
   drawPdfBudgetBars(commands, 52, 52, 508, 48, scope.projects);
-  commands.push(pdfText("Pagina 1 - cuadros, pasteles, velas e indicadores", 36, 22, 8, "#65736f"));
+  commands.push(pdfText("Pagina 1 - cuadros, pasteles, velas, indicadores y brechas", 36, 22, 8, "#65736f"));
 
   return commands.join("\n");
 }
@@ -2560,7 +2870,7 @@ function buildReportPdf(projectId = summaryProjectId()) {
 
 function downloadReportPdf(projectId = summaryProjectId()) {
   const scope = reportScope(projectId);
-  downloadBlob(buildReportPdf(projectId), `pron-informe-${safeFileName(scope.label)}.pdf`);
+  downloadBlob(buildReportPdf(projectId), `pron-informe-completo-${safeFileName(scope.label)}.pdf`);
 }
 
 function downloadScopeReport() {
