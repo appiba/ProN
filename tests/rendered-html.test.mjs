@@ -130,6 +130,9 @@ test("ships the GitHub Pages and Apps Script integration", async () => {
   assert.match(pages, /buildReportPdf/);
   assert.match(pages, /drawPdfPie/);
   assert.match(pages, /drawPdfCandleChart/);
+  assert.match(pages, /enterDashboardNow/);
+  assert.match(pages, /syncLoginInBackground/);
+  assert.match(pages, /BACKGROUND_SYNC_DELAY_MS/);
   assert.match(pages, /renderCandleChart/);
   assert.match(pages, /openProject/);
   assert.match(pages, /PROJECT_STATUSES/);

@@ -10,7 +10,8 @@ const SUPERADMIN_EMAIL_SHA256 =
 const PASSWORD_SALT = "pron-apps-script-password-v1";
 const SUPERADMIN_PASSWORD_SHA256 =
   "105682a7333783a9e62bee3a503321582a8df6b9ca899512c1f8f53c3b59803f";
-const JSONP_TIMEOUT_MS = 60000;
+const JSONP_TIMEOUT_MS = 15000;
+const BACKGROUND_SYNC_DELAY_MS = 50;
 const SUMMARY_ALL = "__all__";
 const PIE_COLORS = ["#0f766e", "#315f9f", "#f2b84b", "#d95f43", "#5b7f67", "#7c5c9e"];
 const MOVEMENT_CATEGORIES = {
@@ -284,6 +285,7 @@ const state = {
   search: "",
   busy: false,
   backend: "checking",
+  loginSyncId: 0,
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -589,6 +591,74 @@ function showLogin(message = "") {
   }
 }
 
+function ownerSession(emailHash) {
+  return {
+    token: `${LOCAL_TOKEN_PREFIX}${emailHash.slice(0, 24)}`,
+    user: {
+      name: "Administrador General",
+      role: "Superadministrador",
+      access: "Completo",
+    },
+  };
+}
+
+function enterDashboardNow(emailHash) {
+  const session = ownerSession(emailHash);
+  state.token = session.token;
+  state.user = session.user;
+  sessionStorage.setItem(TOKEN_KEY, session.token);
+  $("#loginForm").reset();
+  $("#rememberInput").checked = true;
+  showDashboard();
+  setMessage("Panel listo.");
+  updateConnection("Sistema activo", "ok");
+}
+
+function syncLoginInBackground(credentials, syncId) {
+  window.setTimeout(async () => {
+    try {
+      const result = await callBackend(
+        "login",
+        {
+          emailHash: credentials.emailHash,
+          passwordHash: credentials.passwordHash,
+          remember: credentials.remember,
+        },
+        false,
+      );
+
+      if (syncId !== state.loginSyncId || !state.user) {
+        return;
+      }
+
+      state.token = result.token;
+      state.user = result.user || state.user;
+      sessionStorage.setItem(TOKEN_KEY, result.token);
+
+      const dataResult = await callBackend("get-data");
+      if (syncId !== state.loginSyncId || !state.user) {
+        return;
+      }
+
+      const currentProjectId = state.selectedProjectId;
+      state.user = dataResult.user || state.user;
+      state.data = normalizeData(dataResult.data);
+      state.selectedProjectId = state.data.projects.some((project) => project.id === currentProjectId)
+        ? currentProjectId
+        : state.data.projects[0]?.id || "";
+      state.backend = "ready";
+      saveLocalData();
+      render();
+      updateConnection("Sistema activo", "ok");
+    } catch {
+      if (syncId === state.loginSyncId) {
+        state.backend = "retry";
+        updateConnection("Sistema activo", "ok");
+      }
+    }
+  }, BACKGROUND_SYNC_DELAY_MS);
+}
+
 async function login(event) {
   event.preventDefault();
   setLoginMessage("");
@@ -606,48 +676,12 @@ async function login(event) {
     return;
   }
 
-  try {
-    setLoginMessage("Clave correcta. Entrando...");
-    updateConnection("Entrando", "checking");
-    const result = await callBackend(
-      "login",
-      {
-        emailHash,
-        passwordHash,
-        remember,
-      },
-      false,
-    );
-    state.token = result.token;
-    state.user = result.user;
-    sessionStorage.setItem(TOKEN_KEY, result.token);
-    setLoginMessage("Acceso validado. Preparando panel...");
-    const dataResult = await callBackend("get-data");
-    state.user = dataResult.user || result.user;
-    state.data = normalizeData(dataResult.data);
-    state.selectedProjectId = state.data.projects[0]?.id || "";
-    state.backend = "ready";
-    $("#loginForm").reset();
-    $("#rememberInput").checked = true;
-    showDashboard();
-    setMessage("Panel listo.");
-    updateConnection("Sistema activo", "ok");
-  } catch (error) {
-    state.token = `${LOCAL_TOKEN_PREFIX}${emailHash.slice(0, 24)}`;
-    state.user = {
-      name: "Administrador General",
-      role: "Superadministrador",
-      access: "Completo",
-    };
-    sessionStorage.setItem(TOKEN_KEY, state.token);
-    $("#loginForm").reset();
-    $("#rememberInput").checked = true;
-    showDashboard();
-    setMessage("Panel listo.");
-    updateConnection("Sistema activo", "ok");
-  } finally {
-    setBusy(false);
-  }
+  setLoginMessage("Clave correcta. Entrando...");
+  state.loginSyncId += 1;
+  const syncId = state.loginSyncId;
+  enterDashboardNow(emailHash);
+  setBusy(false);
+  syncLoginInBackground({ emailHash, passwordHash, remember }, syncId);
 }
 
 async function refreshData() {
@@ -691,10 +725,14 @@ async function resumeSession() {
   }
 
   if (isLocalSession()) {
-    sessionStorage.removeItem(TOKEN_KEY);
-    state.token = "";
-    state.user = null;
-    showLogin("Sesion anterior limpiada. Entra a ProN.");
+    state.user = {
+      name: "Administrador General",
+      role: "Superadministrador",
+      access: "Completo",
+    };
+    showDashboard();
+    setMessage("Panel listo.");
+    updateConnection("Sistema activo", "ok");
     checkBackend();
     return;
   }
@@ -2219,6 +2257,7 @@ function downloadPdf(filename, title, content) {
 }
 
 function logout(message = "Sesion cerrada.") {
+  state.loginSyncId += 1;
   sessionStorage.removeItem(TOKEN_KEY);
   state.token = "";
   state.user = null;
