@@ -351,6 +351,33 @@ async function login(event) {
   const emailHash = await sha256Hex($("#emailInput").value.trim().toLowerCase());
   const passwordHash = await sha256Hex(`${$("#passwordInput").value}:${PASSWORD_SALT}`);
 
+  if (
+    emailHash !== SUPERADMIN_EMAIL_SHA256 ||
+    passwordHash !== SUPERADMIN_PASSWORD_SHA256
+  ) {
+    setLoginMessage("Credenciales invalidas.");
+    setBusy(false);
+    return;
+  }
+
+  state.token = `${LOCAL_TOKEN_PREFIX}${Date.now()}`;
+  state.user = {
+    name: "Administrador General",
+    role: "Superadministrador",
+    access: "Completo",
+  };
+  state.data = loadLocalData();
+  state.selectedProjectId = state.data.projects[0]?.id || "";
+  sessionStorage.setItem(TOKEN_KEY, state.token);
+  $("#loginForm").reset();
+  $("#rememberInput").checked = true;
+  showDashboard();
+  setMessage(
+    "Base de datos local activa. Intentando sincronizar Google Sheets en segundo plano.",
+    "error",
+  );
+  setBusy(false);
+
   try {
     const result = await callBackend(
       "login",
@@ -366,34 +393,13 @@ async function login(event) {
     state.data = normalizeData(result.data);
     state.selectedProjectId = state.data.projects[0]?.id || "";
     sessionStorage.setItem(TOKEN_KEY, result.token);
-    $("#loginForm").reset();
-    $("#rememberInput").checked = true;
     showDashboard();
     setMessage("Datos sincronizados con Google Sheets.");
   } catch (error) {
-    if (
-      emailHash === SUPERADMIN_EMAIL_SHA256 &&
-      passwordHash === SUPERADMIN_PASSWORD_SHA256
-    ) {
-      state.token = `${LOCAL_TOKEN_PREFIX}${Date.now()}`;
-      state.user = {
-        name: "Administrador General",
-        role: "Superadministrador",
-        access: "Completo",
-      };
-      state.data = loadLocalData();
-      state.selectedProjectId = state.data.projects[0]?.id || "";
-      sessionStorage.setItem(TOKEN_KEY, state.token);
-      $("#loginForm").reset();
-      $("#rememberInput").checked = true;
-      showDashboard();
-      setMessage(
-        "Base de datos local activa. Publica el Apps Script para sincronizar con Google Sheets.",
-        "error",
-      );
-    } else {
-      setLoginMessage("Credenciales invalidas.");
-    }
+    setMessage(
+      "Entraste a ProN con base local. Apps Script aun no responde para Google Sheets.",
+      "error",
+    );
   } finally {
     setBusy(false);
   }
