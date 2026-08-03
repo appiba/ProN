@@ -65,6 +65,7 @@ test("builds the ProN login shell", async () => {
   assert.match(html, /Inicio de sesion/);
   assert.match(html, /Correo electronico/);
   assert.doesNotMatch(html, starterArtifacts);
+  assert.doesNotMatch(html, /Informe TXT|Sincronizar|Sincronizando|Grafico SVG/);
 });
 
 test("keeps private bootstrap credentials out of app source", async () => {
@@ -109,9 +110,21 @@ test("ships the GitHub Pages and Apps Script integration", async () => {
   assert.match(index, /data-view="proyecto-detalle"/);
   assert.match(index, /exportTopButton/);
   assert.match(index, /Descargar PDF/);
+  assert.match(index, /exportPdfButton/);
+  assert.match(index, /reportFinancePie/);
+  assert.match(index, /reportBudgetPie/);
+  assert.match(index, /reportCandles/);
+  assert.match(index, /Descargar informe PDF/);
+  assert.doesNotMatch(
+    index,
+    /Informe TXT|Descargar JSON|Google Sheet|Sincronizar Sheets|Apps Script no respondio|Base de datos local activa|Failed to fetch/i,
+  );
   assert.match(pages, /delete-project/);
   assert.match(pages, /downloadProjectReport/);
   assert.match(pages, /downloadPdf/);
+  assert.match(pages, /buildReportPdf/);
+  assert.match(pages, /drawPdfPie/);
+  assert.match(pages, /drawPdfCandleChart/);
   assert.match(pages, /renderCandleChart/);
   assert.match(pages, /openProject/);
   assert.match(pages, /MOVEMENT_CATEGORIES/);

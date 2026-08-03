@@ -428,14 +428,32 @@
                   <p class="eyebrow">Informes descargables</p>
                   <h3>Indicadores ejecutivos</h3>
                 </div>
-                <button id="exportTxtButton" class="ghost-button" type="button">
-                  Informe PDF
-                </button>
-                <button id="exportJsonButton" class="ghost-button" type="button">
-                  Descargar JSON
+                <button id="exportPdfButton" class="ghost-button" type="button">
+                  Descargar informe PDF
                 </button>
               </div>
-              <div id="chartBars" class="bar-chart"></div>
+              <div class="report-dashboard">
+                <div class="report-pies">
+                  <div class="report-chart-block">
+                    <h4>Distribucion financiera</h4>
+                    <div id="reportFinancePie" class="pie-chart" aria-label="Pastel financiero del informe"></div>
+                    <div id="reportFinanceLegend" class="legend-list"></div>
+                  </div>
+                  <div class="report-chart-block">
+                    <h4>Presupuesto por proyecto</h4>
+                    <div id="reportBudgetPie" class="pie-chart" aria-label="Pastel de presupuestos del informe"></div>
+                    <div id="reportBudgetLegend" class="legend-list"></div>
+                  </div>
+                </div>
+                <div class="report-chart-block report-candles">
+                  <h4>Velas de flujo por fecha</h4>
+                  <div id="reportCandles" class="candle-chart"></div>
+                </div>
+                <div class="report-chart-block report-bars">
+                  <h4>Indicadores por proyecto</h4>
+                  <div id="chartBars" class="bar-chart"></div>
+                </div>
+              </div>
             </article>
           </div>
         </section>
@@ -623,6 +641,6 @@
       </section>
     </main>
 
-    <script src="pages.js?v=20260803-523c3d0-project-pdf"></script>
+    <script src="pages.js?v=20260803-report-pdf-completo"></script>
   </body>
 </html>

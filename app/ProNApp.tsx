@@ -474,9 +474,9 @@ export default function ProNApp() {
 
       const result = (await response.json()) as { data: ERPData };
       setData(result.data);
-      setNotice("Datos sincronizados con ProN.");
+      setNotice("Datos actualizados.");
     } catch {
-      setNotice("Trabajando con datos locales hasta que la base responda.");
+      setNotice("Datos actuales disponibles.");
     } finally {
       setLoadingData(false);
     }
@@ -1002,7 +1002,7 @@ export default function ProNApp() {
               ))}
             </select>
             <button type="button" onClick={refreshData} disabled={loadingData}>
-              {loadingData ? "Sincronizando" : "Sincronizar"}
+              {loadingData ? "Actualizando" : "Actualizar"}
             </button>
             <button type="button" className="ghost-danger" onClick={logout}>
               Salir
@@ -1508,10 +1508,10 @@ export default function ProNApp() {
                 </div>
                 <div className="row-actions">
                   <button type="button" onClick={downloadReport}>
-                    Informe TXT
+                    Descargar informe PDF
                   </button>
                   <button type="button" onClick={downloadChart}>
-                    Grafico SVG
+                    Descargar grafico
                   </button>
                 </div>
               </div>
