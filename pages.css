@@ -583,6 +583,23 @@ nav button:hover {
   color: #52606d;
 }
 
+.pill.live,
+.pill.paid {
+  background: var(--teal-soft);
+  color: #16564f;
+}
+
+.pill.approved {
+  background: #eaf0fb;
+  color: #315f9f;
+}
+
+.pill.review,
+.pill.pending {
+  background: var(--amber-soft);
+  color: #74510c;
+}
+
 .summary {
   display: grid;
   gap: 12px;
@@ -823,6 +840,89 @@ nav button:hover {
   width: auto;
 }
 
+.status-panel {
+  border-left: 5px solid var(--blue);
+}
+
+.status-form {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) auto;
+  gap: 12px;
+  align-items: end;
+}
+
+.status-form label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.status-form button {
+  width: auto;
+}
+
+.status-flow {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(120px, 1fr));
+  gap: 8px;
+}
+
+.status-flow button {
+  min-height: 36px;
+  border-color: var(--line);
+  background: #fff;
+  color: var(--ink);
+  font-size: 13px;
+  padding: 0 8px;
+}
+
+.status-flow button.active {
+  border-color: var(--teal);
+  background: var(--teal-soft);
+  color: #16564f;
+}
+
+.body-copy {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.admin-area {
+  display: grid;
+  gap: 14px;
+  border: 1px solid var(--line);
+  border-left: 5px solid var(--teal);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: var(--shadow);
+  padding: 18px;
+}
+
+.admin-area.is-locked {
+  border-left-color: var(--gold);
+  background: rgba(255, 251, 238, 0.94);
+}
+
+.admin-area.is-locked .admin-summary,
+.admin-area.is-locked .grid {
+  opacity: 0.72;
+}
+
+.admin-area.is-locked input,
+.admin-area.is-locked select,
+.admin-area.is-locked textarea,
+.admin-area.is-locked button {
+  pointer-events: none;
+}
+
+.admin-summary {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
 .compact-metrics .metrics article,
 .compact-metrics article {
   min-height: 92px;
@@ -988,7 +1088,9 @@ nav button:hover {
   .grid,
   .toolbar,
   .settings-grid,
-  .report-pies {
+  .report-pies,
+  .status-form,
+  .status-flow {
     grid-template-columns: 1fr;
   }
 

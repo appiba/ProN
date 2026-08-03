@@ -116,7 +116,7 @@ const fallbackData: ERPData = {
       country: "Ecuador",
       currency: "USD",
       timezone: "America/Guayaquil",
-      status: "Activo",
+      status: "Negocio activo",
       budget: 185000,
       objective: "Apertura controlada con seguimiento financiero semanal.",
       createdAt: "2026-08-01",
@@ -142,7 +142,7 @@ const fallbackData: ERPData = {
       country: "Ecuador",
       currency: "USD",
       timezone: "America/Guayaquil",
-      status: "Activo",
+      status: "En funcion",
       budget: 98000,
       objective: "Medir punto de equilibrio, inventario critico y personal.",
       createdAt: "2026-08-01",
@@ -585,7 +585,7 @@ export default function ProNApp() {
       investment,
       budget,
       balance: income + investment - expenses,
-      active: data.projects.filter((project) => project.status === "Activo").length,
+      active: data.projects.filter((project) => project.status !== "Archivado").length,
     };
   }, [data]);
 
@@ -631,7 +631,7 @@ export default function ProNApp() {
           country: projectForm.country,
           currency: projectForm.currency,
           timezone: projectForm.timezone,
-          status: "Activo",
+          status: "En revision",
           budget: Number.isFinite(budget) ? budget : 0,
           objective: projectForm.objective || "Proyecto creado desde ProN.",
           createdAt: today(),
@@ -645,7 +645,7 @@ export default function ProNApp() {
             {
               id: localId("aud"),
               action: "Proyecto creado",
-              detail: `${projectForm.name} quedo activo.`,
+              detail: `${projectForm.name} quedo en revision.`,
               actorRole: "Superadministrador",
               projectId: id,
               createdAt: today(),
@@ -1106,8 +1106,11 @@ export default function ProNApp() {
                     aria-label="Filtrar por estado"
                   >
                     <option>Todos</option>
-                    <option>Activo</option>
                     <option>En revision</option>
+                    <option>Aprobado</option>
+                    <option>Inversion completada</option>
+                    <option>Negocio activo</option>
+                    <option>En funcion</option>
                     <option>Archivado</option>
                   </select>
                 </div>
@@ -1141,7 +1144,7 @@ export default function ProNApp() {
                             onClick={() =>
                               changeProjectStatus(
                                 project.id,
-                                project.status === "Archivado" ? "Activo" : "Archivado",
+                                project.status === "Archivado" ? "En revision" : "Archivado",
                               )
                             }
                           >

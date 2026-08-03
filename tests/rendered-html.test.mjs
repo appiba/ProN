@@ -108,6 +108,11 @@ test("ships the GitHub Pages and Apps Script integration", async () => {
   assert.match(index, /budgetPie/);
   assert.match(index, /cashflowCandles/);
   assert.match(index, /data-view="proyecto-detalle"/);
+  assert.match(index, /detailStatusForm/);
+  assert.match(index, /administrationArea/);
+  assert.match(index, /detailAdminForm/);
+  assert.match(index, /adminPendingTotal/);
+  assert.match(index, /Guardar administracion/);
   assert.match(index, /exportTopButton/);
   assert.match(index, /Descargar PDF/);
   assert.match(index, /exportPdfButton/);
@@ -127,6 +132,12 @@ test("ships the GitHub Pages and Apps Script integration", async () => {
   assert.match(pages, /drawPdfCandleChart/);
   assert.match(pages, /renderCandleChart/);
   assert.match(pages, /openProject/);
+  assert.match(pages, /PROJECT_STATUSES/);
+  assert.match(pages, /ADMIN_READY_STATUSES/);
+  assert.match(pages, /administrationTotals/);
+  assert.match(pages, /activateProjectAdministration/);
+  assert.match(pages, /Negocio activo/);
+  assert.match(pages, /En funcion/);
   assert.match(pages, /MOVEMENT_CATEGORIES/);
   assert.match(appsScript, /function doGet/);
   assert.match(appsScript, /function doPost/);
@@ -134,5 +145,6 @@ test("ships the GitHub Pages and Apps Script integration", async () => {
   assert.match(appsScript, /ContentService\.MimeType\.JAVASCRIPT/);
   assert.match(appsScript, /deleteProject_/);
   assert.match(appsScript, /deleteRowsByColumnValue_/);
+  assert.match(appsScript, /text_\(payload\.status, "En revision"\)/);
   assert.match(appsScript, /1KCzz2B59PN3IvcyM2_G2uvTi8nA759oV7rUsaXvrcSY/);
 });

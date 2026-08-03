@@ -16,6 +16,12 @@ const PIE_COLORS = ["#0f766e", "#315f9f", "#f2b84b", "#d95f43", "#5b7f67", "#7c5
 const MOVEMENT_CATEGORIES = {
   Gasto: [
     "Operacion",
+    "Administracion",
+    "Pago",
+    "Cuentas por pagar",
+    "Proveedor",
+    "Nomina",
+    "Caja chica",
     "Activos",
     "Personal",
     "Marketing",
@@ -29,6 +35,9 @@ const MOVEMENT_CATEGORIES = {
   ],
   Ingreso: [
     "Ventas",
+    "Ingreso operativo",
+    "Cobro",
+    "Caja diaria",
     "Patrocinio",
     "Reserva",
     "Contrato",
@@ -59,6 +68,22 @@ const INVENTORY_CATEGORIES = [
   "Lenceria",
   "Produccion",
 ];
+const PROJECT_STATUSES = [
+  "En revision",
+  "Aprobado",
+  "Inversion completada",
+  "Negocio activo",
+  "En funcion",
+  "Archivado",
+];
+const ADMIN_READY_STATUSES = new Set([
+  "Aprobado",
+  "Inversion completada",
+  "Negocio activo",
+  "En funcion",
+]);
+const PAYMENT_OPEN_STATUSES = new Set(["Pendiente", "Programado", "Vence pronto"]);
+const PAYMENT_CLOSED_STATUSES = new Set(["Pagado", "Aprobado"]);
 
 const fallbackData = {
   settings: {
@@ -77,7 +102,7 @@ const fallbackData = {
       country: "Ecuador",
       currency: "USD",
       timezone: "America/Guayaquil",
-      status: "Activo",
+      status: "Negocio activo",
       budget: 185000,
       objective: "Apertura controlada con seguimiento financiero semanal.",
       createdAt: "2026-08-01",
@@ -103,7 +128,7 @@ const fallbackData = {
       country: "Ecuador",
       currency: "USD",
       timezone: "America/Guayaquil",
-      status: "Activo",
+      status: "En funcion",
       budget: 98000,
       objective: "Medir punto de equilibrio, inventario critico y personal.",
       createdAt: "2026-08-01",
@@ -154,6 +179,28 @@ const fallbackData = {
       movementDate: "2026-08-03",
       status: "Registrado",
       createdAt: "2026-08-03",
+    },
+    {
+      id: "mov-005",
+      projectId: "hotel-manta",
+      type: "Gasto",
+      category: "Pago",
+      concept: "Pago inicial a proveedor operativo",
+      amount: 4200,
+      movementDate: "2026-08-04",
+      status: "Pagado",
+      createdAt: "2026-08-04",
+    },
+    {
+      id: "mov-006",
+      projectId: "hotel-manta",
+      type: "Gasto",
+      category: "Cuentas por pagar",
+      concept: "Factura pendiente de mantenimiento",
+      amount: 1850,
+      movementDate: "2026-08-05",
+      status: "Pendiente",
+      createdAt: "2026-08-05",
     },
   ],
   partners: [
@@ -299,6 +346,41 @@ function projectById(projectId) {
   return state.data.projects.find((project) => project.id === projectId) || null;
 }
 
+function projectStatus(project) {
+  if (project?.status === "Activo") {
+    return "Negocio activo";
+  }
+
+  return PROJECT_STATUSES.includes(project?.status) ? project.status : "En revision";
+}
+
+function canAdministrate(project) {
+  return ADMIN_READY_STATUSES.has(projectStatus(project));
+}
+
+function statusClass(status) {
+  if (status === "Archivado") {
+    return "archived";
+  }
+  if (status === "En funcion" || status === "Negocio activo") {
+    return "live";
+  }
+  if (status === "Aprobado" || status === "Inversion completada") {
+    return "approved";
+  }
+  return "review";
+}
+
+function paymentStatusClass(status) {
+  if (PAYMENT_CLOSED_STATUSES.has(status)) {
+    return "paid";
+  }
+  if (PAYMENT_OPEN_STATUSES.has(status)) {
+    return "pending";
+  }
+  return "";
+}
+
 function summaryProjectId() {
   return state.summaryScopeId === SUMMARY_ALL ? "" : state.summaryScopeId;
 }
@@ -341,13 +423,23 @@ function setActiveView(tabName) {
   });
 }
 
-function openProject(projectId) {
+function scrollToAdminArea() {
+  window.setTimeout(() => {
+    $("#administrationArea")?.scrollIntoView({ block: "start", behavior: "smooth" });
+  }, 0);
+}
+
+function openProject(projectId, focusAdmin = false) {
   state.selectedProjectId = projectId;
   state.summaryScopeId = projectId;
   state.detailProjectId = projectId;
   setActiveView("proyecto-detalle");
   render();
-  window.scrollTo({ top: 0, behavior: "smooth" });
+  if (focusAdmin) {
+    scrollToAdminArea();
+  } else {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
 }
 
 function setMessage(message, tone = "info") {
@@ -390,7 +482,8 @@ function setBusy(isBusy) {
   state.busy = isBusy;
   $$("button").forEach((button) => {
     if (!["logoutButton", "topLogoutButton"].includes(button.id)) {
-      button.disabled = isBusy;
+      const lockedAdmin = button.closest("#administrationArea.is-locked");
+      button.disabled = isBusy || Boolean(lockedAdmin);
     }
   });
 }
@@ -700,7 +793,7 @@ function applyLocalAction(action, payload) {
         country: payload.country || "Ecuador",
         currency: payload.currency || "USD",
         timezone: payload.timezone || "America/Guayaquil",
-        status: "Activo",
+        status: PROJECT_STATUSES.includes(payload.status) ? payload.status : "En revision",
         budget: numberValue(payload.budget),
         objective: payload.objective || "Proyecto creado desde ProN.",
         createdAt: today(),
@@ -709,7 +802,7 @@ function applyLocalAction(action, payload) {
       ...state.data.projects,
     ];
     state.selectedProjectId = id;
-    addAudit("Proyecto creado", `${payload.name} quedo activo.`, id);
+    addAudit("Proyecto creado", `${payload.name} quedo en revision.`, id);
     return;
   }
 
@@ -723,7 +816,7 @@ function applyLocalAction(action, payload) {
         concept: payload.concept,
         amount: numberValue(payload.amount),
         movementDate: payload.movementDate || today(),
-        status: "Registrado",
+        status: payload.status || "Registrado",
         createdAt: today(),
       },
       ...state.data.movements,
@@ -1016,6 +1109,7 @@ function renderProjectSelects() {
 function renderCategorySelects() {
   populateMovementCategorySelect($("#movementForm"));
   populateMovementCategorySelect($("#detailMovementForm"));
+  populateMovementCategorySelect($("#detailAdminForm"));
   populateInventoryCategorySelect($("#inventoryForm"));
   populateInventoryCategorySelect($("#detailInventoryForm"));
 }
@@ -1363,58 +1457,66 @@ function renderSummary() {
 function renderProjects() {
   replaceChildren(
     "#projectsBody",
-    filteredProjects().map((project) =>
-      el("tr", {}, [
-        el("td", { text: project.name }),
-        el("td", { text: project.type }),
-        el("td", { text: money(project.budget) }),
-        el("td", {}, [
-          el("span", {
-            class: `pill ${project.status === "Archivado" ? "archived" : ""}`,
-            text: project.status,
-          }),
-        ]),
-        el("td", {}, [
-          el("div", { class: "row-actions" }, [
-            el("button", {
-              type: "button",
-              text: "Abrir",
-              onclick: () => openProject(project.id),
-            }),
-            el("button", {
-              type: "button",
-              text: "Descargar",
-              onclick: () => downloadProjectReport(project.id),
-            }),
-            el("button", {
-              type: "button",
-              text: project.status === "Archivado" ? "Restaurar" : "Archivar",
-              onclick: () =>
-                submitAction(
-                  "update-project-status",
-                  {
-                    projectId: project.id,
-                    status: project.status === "Archivado" ? "Activo" : "Archivado",
-                  },
-                  "Estado del proyecto actualizado.",
-                ),
-            }),
-            el("button", {
-              type: "button",
-              class: "danger",
-              text: "Eliminar",
-              onclick: () =>
-                confirmDelete(
-                  `Eliminar ${project.name} y sus registros vinculados?`,
-                  "delete-project",
-                  { projectId: project.id },
-                  "Proyecto eliminado.",
-                ),
+    filteredProjects().map((project) => {
+      const ready = canAdministrate(project);
+      const archived = projectStatus(project) === "Archivado";
+
+      return el("tr", {}, [
+          el("td", { text: project.name }),
+          el("td", { text: project.type }),
+          el("td", { text: money(project.budget) }),
+          el("td", {}, [
+            el("span", {
+              class: `pill ${statusClass(projectStatus(project))}`,
+              text: projectStatus(project),
             }),
           ]),
-        ]),
-      ]),
-    ),
+          el("td", {}, [
+            el("div", { class: "row-actions" }, [
+              el("button", {
+                type: "button",
+                text: "Abrir",
+                onclick: () => openProject(project.id),
+              }),
+              el("button", {
+                type: "button",
+                text: ready ? "Administrar" : "Activar negocio",
+                disabled: archived,
+                onclick: () =>
+                  ready
+                    ? openProject(project.id, true)
+                    : activateProjectAdministration(project.id),
+              }),
+              el("button", {
+                type: "button",
+                text: "Descargar",
+                onclick: () => downloadProjectReport(project.id),
+              }),
+              el("button", {
+                type: "button",
+                text: archived ? "Restaurar" : "Archivar",
+                onclick: () =>
+                  updateProjectStatus(
+                    project.id,
+                    archived ? "En revision" : "Archivado",
+                  ),
+              }),
+              el("button", {
+                type: "button",
+                class: "danger",
+                text: "Eliminar",
+                onclick: () =>
+                  confirmDelete(
+                    `Eliminar ${project.name} y sus registros vinculados?`,
+                    "delete-project",
+                    { projectId: project.id },
+                    "Proyecto eliminado.",
+                  ),
+              }),
+            ]),
+          ]),
+        ]);
+    }),
   );
 }
 
@@ -1600,6 +1702,152 @@ function renderReports() {
   );
 }
 
+function updateProjectStatus(projectId, status, successMessage = "Estado del proyecto actualizado.") {
+  submitAction(
+    "update-project-status",
+    {
+      projectId,
+      status,
+    },
+    successMessage,
+  );
+}
+
+function activateProjectAdministration(projectId) {
+  state.selectedProjectId = projectId;
+  state.summaryScopeId = projectId;
+  state.detailProjectId = projectId;
+  setActiveView("proyecto-detalle");
+  updateProjectStatus(projectId, "Negocio activo", "Negocio activo. Administracion disponible.");
+  scrollToAdminArea();
+}
+
+function administrationMovements(movements) {
+  return movements
+    .filter((movement) => ["Gasto", "Ingreso"].includes(movement.type))
+    .sort((a, b) => String(b.movementDate || "").localeCompare(String(a.movementDate || "")));
+}
+
+function administrationTotals(movements) {
+  const rows = administrationMovements(movements);
+  return {
+    expenses: rows
+      .filter((movement) => movement.type === "Gasto")
+      .reduce((sum, movement) => sum + numberValue(movement.amount), 0),
+    income: rows
+      .filter((movement) => movement.type === "Ingreso")
+      .reduce((sum, movement) => sum + numberValue(movement.amount), 0),
+    paid: rows
+      .filter((movement) => movement.type === "Gasto" && PAYMENT_CLOSED_STATUSES.has(movement.status))
+      .reduce((sum, movement) => sum + numberValue(movement.amount), 0),
+    pending: rows
+      .filter((movement) => movement.type === "Gasto" && PAYMENT_OPEN_STATUSES.has(movement.status))
+      .reduce((sum, movement) => sum + numberValue(movement.amount), 0),
+  };
+}
+
+function renderProjectStatusPanel(project) {
+  const currentStatus = projectStatus(project);
+  const ready = canAdministrate(project);
+
+  setTextIfExists("#detailStatusPill", currentStatus);
+  const statusPill = $("#detailStatusPill");
+  if (statusPill) {
+    statusPill.className = `pill ${statusClass(currentStatus)}`;
+  }
+
+  const statusSelect = $("#detailStatusSelect");
+  statusSelect.replaceChildren(
+    ...PROJECT_STATUSES.map((status) => el("option", { value: status, text: status })),
+  );
+  statusSelect.value = currentStatus;
+
+  replaceChildren(
+    "#projectStatusFlow",
+    PROJECT_STATUSES.filter((status) => status !== "Archivado").map((status) =>
+      el("button", {
+        type: "button",
+        class: status === currentStatus ? "active" : "",
+        text: status,
+        onclick: () => updateProjectStatus(project.id, status),
+      }),
+    ),
+  );
+
+  setTextIfExists(
+    "#adminGateMessage",
+    ready
+      ? "Administracion disponible para pagos, gastos operativos, cobros y cuentas por pagar."
+      : "Cuando el proyecto este aprobado, con inversion completada, como negocio activo o en funcion, se habilita la administracion.",
+  );
+}
+
+function renderAdministration(project, movements) {
+  const ready = canAdministrate(project);
+  const rows = administrationMovements(movements);
+  const current = administrationTotals(movements);
+  const adminArea = $("#administrationArea");
+
+  adminArea.classList.toggle("is-locked", !ready);
+  setTextIfExists("#adminStatusPill", ready ? "Administracion activa" : "Pendiente de aprobacion");
+  const adminStatus = $("#adminStatusPill");
+  if (adminStatus) {
+    adminStatus.className = `pill ${ready ? "live" : "review"}`;
+  }
+
+  setTextIfExists("#adminExpenseTotal", money(current.expenses));
+  setTextIfExists("#adminPaidTotal", money(current.paid));
+  setTextIfExists("#adminPendingTotal", money(current.pending));
+  setTextIfExists("#adminIncomeTotal", money(current.income));
+
+  [...$("#detailAdminForm").elements].forEach((field) => {
+    field.disabled = !ready;
+  });
+  $("#adminPdfButton").disabled = !ready;
+
+  replaceChildren(
+    "#detailAdminBody",
+    rows.map((movement) =>
+      el("tr", {}, [
+        el("td", { text: movement.movementDate }),
+        el("td", {}, [
+          el("span", {
+            class: `pill ${paymentStatusClass(movement.status)}`,
+            text: movement.status || "Registrado",
+          }),
+        ]),
+        el("td", { text: movement.type }),
+        el("td", { text: movement.category }),
+        el("td", { text: movement.concept }),
+        el("td", { text: money(movement.amount) }),
+        el("td", {}, [
+          el("div", { class: "row-actions" }, [
+            el("button", {
+              type: "button",
+              text: "PDF",
+              disabled: !ready,
+              onclick: () => downloadMovementReceipt(movement.id),
+            }),
+            el("button", {
+              type: "button",
+              class: "danger",
+              text: "Eliminar",
+              disabled: !ready,
+              onclick: () =>
+                confirmDelete(
+                  `Eliminar movimiento ${movement.concept}?`,
+                  "delete-movement",
+                  { movementId: movement.id },
+                  "Movimiento eliminado.",
+                ),
+            }),
+          ]),
+        ]),
+      ]),
+    ),
+  );
+}
+
 function renderProjectDetail() {
   const projectId = state.detailProjectId || state.selectedProjectId;
   const project = projectById(projectId);
@@ -1619,7 +1867,9 @@ function renderProjectDetail() {
   setTextIfExists("#detailIncome", money(current.income));
   setTextIfExists("#detailInvestment", money(current.investment));
   setTextIfExists("#detailExpenses", money(current.expenses));
-  setTextIfExists("#detailArchiveButton", project.status === "Archivado" ? "Restaurar" : "Archivar");
+  setTextIfExists("#detailArchiveButton", projectStatus(project) === "Archivado" ? "Restaurar" : "Archivar");
+  renderProjectStatusPanel(project);
+  renderAdministration(project, movements);
   renderCandleChart("#detailCandles", movements);
 
   replaceChildren(
@@ -2099,6 +2349,8 @@ function categoryReportRows(movements) {
 function buildReport(projectId = summaryProjectId()) {
   const scope = reportScope(projectId);
   const categoryRows = categoryReportRows(scope.movements);
+  const adminTotals = administrationTotals(scope.movements);
+  const adminRows = administrationMovements(scope.movements);
 
   return [
     `ProN - Informe ejecutivo (${scope.label})`,
@@ -2111,7 +2363,18 @@ function buildReport(projectId = summaryProjectId()) {
     `Proyectos activos: ${scope.projects.filter((project) => project.status !== "Archivado").length}`,
     `Socios vinculados: ${scope.partners.length}`,
     `Valor inventario: ${money(scope.inventoryValue)}`,
+    `Gasto operativo: ${money(adminTotals.expenses)}`,
+    `Pagado: ${money(adminTotals.paid)}`,
+    `Pendiente: ${money(adminTotals.pending)}`,
+    `Ingreso operativo: ${money(adminTotals.income)}`,
     `Eventos de auditoria: ${scope.audit.length}`,
+    "",
+    ...reportLines(
+      "Administracion operativa:",
+      adminRows,
+      (movement) =>
+        `- ${movement.movementDate} | ${movement.status || "Registrado"} | ${movement.type} | ${movement.category} | ${movement.concept} | ${money(movement.amount)}`,
+    ),
     "",
     ...reportLines("Totales por categoria:", categoryRows, (row) => `- ${row.label}: ${money(row.value)}`),
     "",
@@ -2289,6 +2552,7 @@ function buildExecutiveReportPage(projectId = summaryProjectId()) {
   const scope = reportScope(projectId);
   const financeItems = typeReportItems(scope.movements);
   const budgetItems = budgetReportItems(scope.projects);
+  const adminTotals = administrationTotals(scope.movements);
   const activeProjects = scope.projects.filter((project) => project.status !== "Archivado").length;
   const cardWidth = 172;
   const cardHeight = 54;
@@ -2304,7 +2568,7 @@ function buildExecutiveReportPage(projectId = summaryProjectId()) {
     ["Proyectos", String(activeProjects), "#5b7f67"],
     ["Socios", String(scope.partners.length), "#7c5c9e"],
     ["Inventario", money(scope.inventoryValue), "#315f9f"],
-    ["Auditoria", String(scope.audit.length), "#d95f43"],
+    ["Pendiente", money(adminTotals.pending), "#d95f43"],
   ];
   const commands = [
     pdfRect(0, 0, 612, 792, { fill: "#f6f8f5", stroke: null }),
@@ -2506,8 +2770,12 @@ function bindEvents() {
   });
   $("#movementForm").elements.type.addEventListener("change", renderCategorySelects);
   $("#detailMovementForm").elements.type.addEventListener("change", renderCategorySelects);
+  $("#detailAdminForm").elements.type.addEventListener("change", renderCategorySelects);
   $("#backToProjectsButton").addEventListener("click", () => setActiveView("proyectos"));
   $("#detailPdfButton").addEventListener("click", () => {
+    downloadProjectReport(state.detailProjectId || state.selectedProjectId);
+  });
+  $("#adminPdfButton").addEventListener("click", () => {
     downloadProjectReport(state.detailProjectId || state.selectedProjectId);
   });
   $("#detailCsvButton").addEventListener("click", () => {
@@ -2523,13 +2791,9 @@ function bindEvents() {
     if (!project) {
       return;
     }
-    submitAction(
-      "update-project-status",
-      {
-        projectId: project.id,
-        status: project.status === "Archivado" ? "Activo" : "Archivado",
-      },
-      "Estado del proyecto actualizado.",
+    updateProjectStatus(
+      project.id,
+      projectStatus(project) === "Archivado" ? "En revision" : "Archivado",
     );
   });
   $("#detailDeleteButton").addEventListener("click", () => {
@@ -2600,6 +2864,46 @@ function bindEvents() {
     );
     event.currentTarget.reset();
     event.currentTarget.elements.movementDate.value = today();
+    renderCategorySelects();
+  });
+
+  $("#detailStatusForm").addEventListener("submit", (event) => {
+    event.preventDefault();
+    const project = projectById(state.detailProjectId || state.selectedProjectId);
+    const data = formData(event.currentTarget);
+
+    if (!project) {
+      return;
+    }
+
+    updateProjectStatus(project.id, data.status);
+    if (ADMIN_READY_STATUSES.has(data.status)) {
+      scrollToAdminArea();
+    }
+  });
+
+  $("#detailAdminForm").addEventListener("submit", (event) => {
+    event.preventDefault();
+    const project = projectById(state.detailProjectId || state.selectedProjectId);
+
+    if (!project || !canAdministrate(project)) {
+      setMessage("Primero cambia el estado del proyecto a Aprobado, Negocio activo o En funcion.", "warning");
+      return;
+    }
+
+    const data = formData(event.currentTarget);
+    submitAction(
+      "create-movement",
+      {
+        ...data,
+        projectId: project.id,
+        amount: numberValue(data.amount),
+      },
+      "Registro administrativo guardado.",
+    );
+    event.currentTarget.reset();
+    event.currentTarget.elements.movementDate.value = today();
+    event.currentTarget.elements.status.value = "Pagado";
     renderCategorySelects();
   });
 
@@ -2712,6 +3016,7 @@ function init() {
   bindEvents();
   $("#movementForm").elements.movementDate.value = today();
   $("#detailMovementForm").elements.movementDate.value = today();
+  $("#detailAdminForm").elements.movementDate.value = today();
   checkBackend();
   resumeSession();
 }

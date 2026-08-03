@@ -221,13 +221,13 @@ function createProject_(payload) {
     country: text_(payload.country, CONFIG.COUNTRY),
     currency: text_(payload.currency, CONFIG.CURRENCY),
     timezone: text_(payload.timezone, CONFIG.TIMEZONE),
-    status: "Activo",
+    status: text_(payload.status, "En revision"),
     budget: number_(payload.budget),
     objective: text_(payload.objective, "Proyecto creado desde ProN."),
     createdAt: today_(),
     updatedAt: today_(),
   });
-  audit_("Proyecto creado", name + " quedo activo.", id);
+  audit_("Proyecto creado", name + " quedo en revision.", id);
 }
 
 function createMovement_(payload) {
@@ -248,7 +248,7 @@ function createMovement_(payload) {
     concept: concept,
     amount: amount,
     movementDate: text_(payload.movementDate, today_()),
-    status: "Registrado",
+    status: text_(payload.status, "Registrado"),
     createdAt: today_(),
   });
   audit_("Movimiento registrado", type + ": " + concept + ".", projectId);
@@ -502,7 +502,7 @@ function seedData_() {
       country: CONFIG.COUNTRY,
       currency: CONFIG.CURRENCY,
       timezone: CONFIG.TIMEZONE,
-      status: "Activo",
+      status: "Negocio activo",
       budget: 185000,
       objective: "Apertura controlada con seguimiento financiero semanal.",
       createdAt: "2026-08-01",
@@ -528,7 +528,7 @@ function seedData_() {
       country: CONFIG.COUNTRY,
       currency: CONFIG.CURRENCY,
       timezone: CONFIG.TIMEZONE,
-      status: "Activo",
+      status: "En funcion",
       budget: 98000,
       objective: "Medir punto de equilibrio, inventario critico y personal.",
       createdAt: "2026-08-01",
@@ -582,6 +582,28 @@ function seedData_() {
       movementDate: "2026-08-03",
       status: "Registrado",
       createdAt: "2026-08-03",
+    },
+    {
+      id: "mov-005",
+      projectId: "hotel-manta",
+      type: "Gasto",
+      category: "Pago",
+      concept: "Pago inicial a proveedor operativo",
+      amount: 4200,
+      movementDate: "2026-08-04",
+      status: "Pagado",
+      createdAt: "2026-08-04",
+    },
+    {
+      id: "mov-006",
+      projectId: "hotel-manta",
+      type: "Gasto",
+      category: "Cuentas por pagar",
+      concept: "Factura pendiente de mantenimiento",
+      amount: 1850,
+      movementDate: "2026-08-05",
+      status: "Pendiente",
+      createdAt: "2026-08-05",
     },
   ].forEach(function (item) {
     appendObject_("Movements", item);

@@ -521,6 +521,105 @@
               </article>
             </section>
 
+            <article class="panel wide status-panel">
+              <div class="panel-title">
+                <div>
+                  <p class="eyebrow">Estado operativo</p>
+                  <h3>Etapa del proyecto</h3>
+                </div>
+                <span id="detailStatusPill" class="pill">En revision</span>
+              </div>
+              <form id="detailStatusForm" class="status-form">
+                <label>
+                  Estado del negocio
+                  <select id="detailStatusSelect" name="status"></select>
+                </label>
+                <button type="submit">Guardar estado</button>
+              </form>
+              <div id="projectStatusFlow" class="status-flow"></div>
+              <p id="adminGateMessage" class="body-copy"></p>
+            </article>
+
+            <section id="administrationArea" class="admin-area">
+              <div class="panel-title">
+                <div>
+                  <p class="eyebrow">Administracion</p>
+                  <h3>Administracion del negocio</h3>
+                </div>
+                <span id="adminStatusPill" class="pill">Activo</span>
+              </div>
+              <section class="ops-strip admin-summary" aria-label="Indicadores administrativos">
+                <article>
+                  <span>Gasto operativo</span>
+                  <strong id="adminExpenseTotal">$0,00</strong>
+                  <small>pagos y egresos</small>
+                </article>
+                <article>
+                  <span>Pagado</span>
+                  <strong id="adminPaidTotal">$0,00</strong>
+                  <small>salidas cerradas</small>
+                </article>
+                <article>
+                  <span>Pendiente</span>
+                  <strong id="adminPendingTotal">$0,00</strong>
+                  <small>cuentas por pagar</small>
+                </article>
+                <article>
+                  <span>Ingreso operativo</span>
+                  <strong id="adminIncomeTotal">$0,00</strong>
+                  <small>cobros del negocio</small>
+                </article>
+              </section>
+              <div class="grid">
+                <article class="panel">
+                  <h3>Registrar pago o gasto</h3>
+                  <form id="detailAdminForm" class="stack-form">
+                    <select name="type">
+                      <option>Gasto</option>
+                      <option>Ingreso</option>
+                    </select>
+                    <select name="category" required></select>
+                    <input name="concept" placeholder="Pago, proveedor, cuenta o concepto" required />
+                    <input name="amount" inputmode="decimal" placeholder="Valor" required />
+                    <input name="movementDate" type="date" required />
+                    <select name="status">
+                      <option>Pagado</option>
+                      <option>Pendiente</option>
+                      <option>Programado</option>
+                      <option>Vence pronto</option>
+                      <option>Aprobado</option>
+                    </select>
+                    <button type="submit">Guardar administracion</button>
+                  </form>
+                </article>
+
+                <article class="panel wide">
+                  <div class="panel-title">
+                    <h3>Pagos, gastos y cobros</h3>
+                    <button id="adminPdfButton" class="ghost-button" type="button">
+                      Descargar PDF
+                    </button>
+                  </div>
+                  <div class="table-wrap">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Fecha</th>
+                          <th>Estado</th>
+                          <th>Tipo</th>
+                          <th>Categoria</th>
+                          <th>Concepto</th>
+                          <th>Valor</th>
+                          <th>Acciones</th>
+                        </tr>
+                      </thead>
+                      <tbody id="detailAdminBody"></tbody>
+                    </table>
+                  </div>
+                </article>
+              </div>
+            </section>
+
             <div class="grid">
               <article class="panel wide">
                 <div class="panel-title">
@@ -641,6 +740,6 @@
       </section>
     </main>
 
-    <script src="pages.js?v=20260803-report-pdf-completo"></script>
+    <script src="pages.js?v=20260803-admin-operativa"></script>
   </body>
 </html>
