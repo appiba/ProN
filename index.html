@@ -93,6 +93,9 @@
             <h2>ProN para negocios, proyectos y eventos</h2>
           </div>
           <div class="top-actions">
+            <span id="connectionBadge" class="connection-badge checking">
+              Verificando Google Sheets
+            </span>
             <a
               class="ghost-link"
               href="https://docs.google.com/spreadsheets/d/1KCzz2B59PN3IvcyM2_G2uvTi8nA759oV7rUsaXvrcSY/edit?gid=0#gid=0"
@@ -101,7 +104,8 @@
             >
               Google Sheet
             </a>
-            <button id="refreshButton" type="button">Sincronizar</button>
+            <button id="refreshButton" type="button">Sincronizar Sheets</button>
+            <button id="topLogoutButton" class="ghost-button" type="button">Salir</button>
           </div>
         </header>
 
@@ -123,6 +127,29 @@
           <article>
             <span>Gastos</span>
             <strong id="metricExpenses">$0,00</strong>
+          </article>
+        </section>
+
+        <section class="ops-strip" aria-label="Estado operativo">
+          <article>
+            <span>Proyectos activos</span>
+            <strong id="metricActiveProjects">0</strong>
+            <small>en gestion</small>
+          </article>
+          <article>
+            <span>Socios vinculados</span>
+            <strong id="metricPartners">0</strong>
+            <small>capital y aliados</small>
+          </article>
+          <article>
+            <span>Valor inventario</span>
+            <strong id="metricInventoryValue">$0,00</strong>
+            <small>activos registrados</small>
+          </article>
+          <article>
+            <span>Auditoria</span>
+            <strong id="metricAudit">0</strong>
+            <small>eventos trazados</small>
           </article>
         </section>
 
@@ -163,6 +190,17 @@
                 <h3>Auditoria</h3>
               </div>
               <ul id="auditList" class="activity compact"></ul>
+            </article>
+
+            <article class="panel">
+              <div class="panel-title">
+                <div>
+                  <p class="eyebrow">Direccion</p>
+                  <h3>Centro de mando</h3>
+                </div>
+                <span id="syncPill" class="pill">Sheets</span>
+              </div>
+              <div id="executiveSignals" class="signal-list"></div>
             </article>
           </div>
         </section>
@@ -394,6 +432,6 @@
       </section>
     </main>
 
-    <script src="pages.js?v=20260803-05bd636-loginfix"></script>
+    <script src="pages.js?v=20260803-58ae27a-professional-sync"></script>
   </body>
 </html>

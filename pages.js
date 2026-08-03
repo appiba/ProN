@@ -10,6 +10,7 @@ const SUPERADMIN_EMAIL_SHA256 =
 const PASSWORD_SALT = "pron-apps-script-password-v1";
 const SUPERADMIN_PASSWORD_SHA256 =
   "105682a7333783a9e62bee3a503321582a8df6b9ca899512c1f8f53c3b59803f";
+const JSONP_TIMEOUT_MS = 60000;
 
 const fallbackData = {
   settings: {
@@ -246,18 +247,44 @@ function projectName(projectId) {
 
 function setMessage(message, tone = "info") {
   const notice = $("#notice");
+  if (!notice) {
+    return;
+  }
   notice.textContent = message;
-  notice.className = `notice show ${tone === "error" ? "error" : ""}`;
+  notice.className = `notice show ${
+    tone === "error" ? "error" : tone === "warning" ? "warning" : ""
+  }`;
 }
 
 function setLoginMessage(message) {
   $("#loginMessage").textContent = message;
 }
 
+function setTextIfExists(selector, value) {
+  const node = document.querySelector(selector);
+  if (node) {
+    node.textContent = value;
+  }
+}
+
+function updateConnection(label, tone = "checking") {
+  const badge = document.querySelector("#connectionBadge");
+  if (badge) {
+    badge.textContent = label;
+    badge.className = `connection-badge ${tone}`;
+  }
+
+  const pill = document.querySelector("#syncPill");
+  if (pill) {
+    pill.textContent = tone === "ok" ? "Sheets activo" : label;
+    pill.className = `pill ${tone === "error" || tone === "local" ? "warning" : ""}`;
+  }
+}
+
 function setBusy(isBusy) {
   state.busy = isBusy;
   $$("button").forEach((button) => {
-    if (button.id !== "logoutButton") {
+    if (!["logoutButton", "topLogoutButton"].includes(button.id)) {
       button.disabled = isBusy;
     }
   });
@@ -287,8 +314,8 @@ function jsonpRequest(payload) {
     const script = document.createElement("script");
     const timeout = window.setTimeout(() => {
       cleanup();
-      reject(new Error("Apps Script no respondio. Base local activa."));
-    }, 10000);
+      reject(new Error("Apps Script no respondio a tiempo. Reintenta la sincronizacion."));
+    }, JSONP_TIMEOUT_MS);
 
     function cleanup() {
       window.clearTimeout(timeout);
@@ -303,7 +330,7 @@ function jsonpRequest(payload) {
 
     script.onerror = () => {
       cleanup();
-      reject(new Error("Apps Script no respondio. Base local activa."));
+      reject(new Error("Apps Script no respondio. Revisa la publicacion del Web App."));
     };
 
     const url = new URL(APPS_SCRIPT_URL);
@@ -318,13 +345,20 @@ async function checkBackend() {
   try {
     const result = await callBackend("health", {}, false);
     state.backend = result.ok ? "ready" : "pending";
-    $("#backendStatus").textContent = result.ok
-      ? "Apps Script listo: Google Sheets activo"
-      : "Base local lista; Apps Script pendiente";
+    setTextIfExists(
+      "#backendStatus",
+      result.ok
+        ? "Apps Script listo: Google Sheets activo"
+        : "Apps Script pendiente de publicacion",
+    );
+    updateConnection(
+      result.ok ? "Google Sheets activo" : "Apps Script pendiente",
+      result.ok ? "ok" : "local",
+    );
   } catch {
-    state.backend = "local";
-    $("#backendStatus").textContent =
-      "Base local lista; Apps Script aun no responde";
+    state.backend = "error";
+    setTextIfExists("#backendStatus", "Apps Script aun no responde");
+    updateConnection("Reconectando Sheets", "error");
   }
 }
 
@@ -333,6 +367,10 @@ function showDashboard() {
   $("#dashboard").classList.remove("is-hidden");
   $("#sessionName").textContent = state.user?.name || "Administrador General";
   $("#sessionRole").textContent = state.user?.role || "Superadministrador";
+  updateConnection(
+    isLocalSession() ? "Requiere reconexion" : "Google Sheets activo",
+    isLocalSession() ? "local" : "ok",
+  );
   render();
 }
 
@@ -350,6 +388,7 @@ async function login(event) {
   setBusy(true);
   const emailHash = await sha256Hex($("#emailInput").value.trim().toLowerCase());
   const passwordHash = await sha256Hex(`${$("#passwordInput").value}:${PASSWORD_SALT}`);
+  const remember = $("#rememberInput").checked;
 
   if (
     emailHash !== SUPERADMIN_EMAIL_SHA256 ||
@@ -360,31 +399,15 @@ async function login(event) {
     return;
   }
 
-  state.token = `${LOCAL_TOKEN_PREFIX}${Date.now()}`;
-  state.user = {
-    name: "Administrador General",
-    role: "Superadministrador",
-    access: "Completo",
-  };
-  state.data = loadLocalData();
-  state.selectedProjectId = state.data.projects[0]?.id || "";
-  sessionStorage.setItem(TOKEN_KEY, state.token);
-  $("#loginForm").reset();
-  $("#rememberInput").checked = true;
-  showDashboard();
-  setMessage(
-    "Base de datos local activa. Intentando sincronizar Google Sheets en segundo plano.",
-    "error",
-  );
-  setBusy(false);
-
   try {
+    setLoginMessage("Conectando ProN con Google Sheets...");
+    updateConnection("Conectando Sheets", "checking");
     const result = await callBackend(
       "login",
       {
         emailHash,
         passwordHash,
-        remember: $("#rememberInput").checked,
+        remember,
       },
       false,
     );
@@ -392,14 +415,21 @@ async function login(event) {
     state.user = result.user;
     state.data = normalizeData(result.data);
     state.selectedProjectId = state.data.projects[0]?.id || "";
+    state.backend = "ready";
     sessionStorage.setItem(TOKEN_KEY, result.token);
+    $("#loginForm").reset();
+    $("#rememberInput").checked = true;
     showDashboard();
-    setMessage("Datos sincronizados con Google Sheets.");
+    setMessage("Google Sheets activo. Datos sincronizados desde la base de datos.");
+    updateConnection("Google Sheets activo", "ok");
   } catch (error) {
-    setMessage(
-      "Entraste a ProN con base local. Apps Script aun no responde para Google Sheets.",
-      "error",
+    state.token = "";
+    state.user = null;
+    sessionStorage.removeItem(TOKEN_KEY);
+    setLoginMessage(
+      `${error.message} No se abrio sesion sin Google Sheets; vuelve a intentar.`,
     );
+    updateConnection("Reintentar Sheets", "error");
   } finally {
     setBusy(false);
   }
@@ -407,23 +437,24 @@ async function login(event) {
 
 async function refreshData() {
   if (isLocalSession()) {
-    setMessage(
-      "Base local activa. Cuando el Apps Script responda, cierra sesion y entra de nuevo para conectar Google Sheets.",
-      "error",
-    );
-    render();
+    logout("Sesion anterior limpiada. Entra de nuevo para conectar Google Sheets.");
     return;
   }
 
   setBusy(true);
+  setMessage("Sincronizando con Google Sheets...");
+  updateConnection("Sincronizando Sheets", "checking");
 
   try {
     const result = await callBackend("get-data");
     state.data = normalizeData(result.data);
+    state.backend = "ready";
     setMessage("Datos actualizados desde Google Sheets.");
+    updateConnection("Google Sheets activo", "ok");
     render();
   } catch (error) {
     setMessage(error.message, "error");
+    updateConnection("Error de sincronizacion", "error");
   } finally {
     setBusy(false);
   }
@@ -436,18 +467,11 @@ async function resumeSession() {
   }
 
   if (isLocalSession()) {
-    state.user = {
-      name: "Administrador General",
-      role: "Superadministrador",
-      access: "Completo",
-    };
-    state.data = loadLocalData();
-    state.selectedProjectId = state.data.projects[0]?.id || "";
-    showDashboard();
-    setMessage(
-      "Base de datos local activa. Apps Script queda como sincronizacion pendiente.",
-      "error",
-    );
+    sessionStorage.removeItem(TOKEN_KEY);
+    state.token = "";
+    state.user = null;
+    showLogin("Sesion anterior limpiada. Entra para conectar ProN con Google Sheets.");
+    checkBackend();
     return;
   }
 
@@ -459,23 +483,21 @@ async function resumeSession() {
       access: "Completo",
     };
     state.data = normalizeData(result.data);
+    state.backend = "ready";
     showDashboard();
+    setMessage("Google Sheets activo. Sesion restaurada.");
+    updateConnection("Google Sheets activo", "ok");
   } catch {
     sessionStorage.removeItem(TOKEN_KEY);
     state.token = "";
     showLogin("Inicia sesion para conectar ProN con Google Sheets.");
+    updateConnection("Reintentar Sheets", "error");
   }
 }
 
 async function submitAction(action, payload, successMessage) {
   if (isLocalSession()) {
-    applyLocalAction(action, payload);
-    saveLocalData();
-    setMessage(
-      `${successMessage.replace("Google Sheets", "la base local")} Sincronizacion pendiente con Google Sheets.`,
-      "error",
-    );
-    render();
+    logout("Sesion anterior limpiada. Entra de nuevo para guardar en Google Sheets.");
     return;
   }
 
@@ -484,13 +506,16 @@ async function submitAction(action, payload, successMessage) {
   try {
     const result = await callBackend(action, payload);
     state.data = normalizeData(result.data);
+    state.backend = "ready";
     if (!state.data.projects.some((project) => project.id === state.selectedProjectId)) {
       state.selectedProjectId = state.data.projects[0]?.id || "";
     }
     setMessage(successMessage);
+    updateConnection("Google Sheets activo", "ok");
     render();
   } catch (error) {
     setMessage(error.message, "error");
+    updateConnection("Error de sincronizacion", "error");
   } finally {
     setBusy(false);
   }
@@ -735,11 +760,24 @@ function render() {
 
 function renderMetrics() {
   const current = totals();
+  const activeProjects = state.data.projects.filter(
+    (project) => project.status !== "Archivado",
+  ).length;
+  const inventoryValue = state.data.inventory.reduce(
+    (sum, item) =>
+      sum + numberValue(item.quantity) * numberValue(item.unitCost),
+    0,
+  );
+
   $("#metricBudget").textContent = money(current.budget);
   $("#metricIncome").textContent = money(current.income);
   $("#metricInvestment").textContent = money(current.investment);
   $("#metricExpenses").textContent = money(current.expenses);
   $("#balanceBadge").textContent = `Balance ${money(current.balance)}`;
+  setTextIfExists("#metricActiveProjects", String(activeProjects));
+  setTextIfExists("#metricPartners", String(state.data.partners.length));
+  setTextIfExists("#metricInventoryValue", money(inventoryValue));
+  setTextIfExists("#metricAudit", String(state.data.audit.length));
 }
 
 function renderProjectSelects() {
@@ -786,6 +824,43 @@ function renderSummary() {
       ]),
     ),
   );
+
+  const current = totals();
+  const activeProjects = state.data.projects.filter(
+    (project) => project.status !== "Archivado",
+  ).length;
+  const newestMovement = state.data.movements[0];
+  const dbReady = state.backend === "ready" && !isLocalSession();
+
+  replaceChildren("#executiveSignals", [
+    el("div", {}, [
+      el("b", { text: "DB" }),
+      el("strong", {
+        text: dbReady ? "Google Sheets operativo" : "Conexion en revision",
+      }),
+      el("span", {
+        text: dbReady
+          ? "Lectura y escritura salen desde la hoja publicada."
+          : "ProN intentara reconectar antes de operar.",
+      }),
+    ]),
+    el("div", {}, [
+      el("b", { text: "$" }),
+      el("strong", { text: `Caja disponible ${money(current.balance)}` }),
+      el("span", {
+        text: `${activeProjects} proyectos activos con presupuesto consolidado.`,
+      }),
+    ]),
+    el("div", {}, [
+      el("b", { text: "OP" }),
+      el("strong", { text: newestMovement?.concept || "Sin movimientos recientes" }),
+      el("span", {
+        text: newestMovement
+          ? `${projectName(newestMovement.projectId)} - ${newestMovement.type}`
+          : "Registra ingresos, gastos e inversiones por proyecto.",
+      }),
+    ]),
+  ]);
 }
 
 function renderProjects() {
@@ -938,6 +1013,15 @@ function downloadText(filename, mime, content) {
   URL.revokeObjectURL(url);
 }
 
+function logout(message = "Sesion cerrada.") {
+  sessionStorage.removeItem(TOKEN_KEY);
+  state.token = "";
+  state.user = null;
+  updateConnection("Verificando Google Sheets", "checking");
+  showLogin(message);
+  checkBackend();
+}
+
 function buildCsv() {
   const rows = [
     ["Proyecto", "Tipo", "Categoria", "Concepto", "Valor", "Fecha", "Estado"],
@@ -976,12 +1060,8 @@ function buildReport() {
 function bindEvents() {
   $("#loginForm").addEventListener("submit", login);
   $("#refreshButton").addEventListener("click", refreshData);
-  $("#logoutButton").addEventListener("click", () => {
-    sessionStorage.removeItem(TOKEN_KEY);
-    state.token = "";
-    state.user = null;
-    showLogin("Sesion cerrada.");
-  });
+  $("#logoutButton").addEventListener("click", () => logout());
+  $("#topLogoutButton").addEventListener("click", () => logout());
   $("#projectSelect").addEventListener("change", (event) => {
     state.selectedProjectId = event.target.value;
     render();
