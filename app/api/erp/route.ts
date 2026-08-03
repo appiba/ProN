@@ -92,6 +92,8 @@ type ActionPayload = {
   timezone?: string;
   budget?: number;
   objective?: string;
+  contribution?: number;
+  participation?: number;
   projectId?: string;
   category?: string;
   concept?: string;
@@ -486,6 +488,50 @@ export async function POST(request: Request) {
         )
         .run();
       await audit(db, "Movimiento registrado", `${type}: ${concept}.`, projectId);
+      break;
+    }
+    case "create-partner": {
+      const projectId = textValue(payload.projectId);
+      const name = textValue(payload.name);
+      const participation = numericValue(payload.participation);
+
+      if (!projectId || !name) {
+        return jsonError("Proyecto y nombre del socio son obligatorios.");
+      }
+
+      if (participation < 0) {
+        return jsonError("La participacion no puede ser negativa.");
+      }
+
+      const existing = await db
+        .prepare("SELECT COALESCE(SUM(participation), 0) AS total FROM partners WHERE project_id = ?")
+        .bind(projectId)
+        .first<{ total: number }>();
+      const assigned = numericValue(existing?.total);
+
+      if (assigned + participation > 100.0001) {
+        return jsonError(
+          `La participacion supera 100%. Disponible: ${Math.max(0, 100 - assigned)}%.`,
+        );
+      }
+
+      await db
+        .prepare(
+          `INSERT INTO partners
+          (id, project_id, name, type, contribution, participation, status)
+          VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .bind(
+          newId("soc"),
+          projectId,
+          name,
+          textValue(payload.type, "Socio"),
+          Math.max(0, numericValue(payload.contribution)),
+          participation,
+          "Activo",
+        )
+        .run();
+      await audit(db, "Socio agregado", `${name} fue vinculado al proyecto.`, projectId);
       break;
     }
     case "create-user": {

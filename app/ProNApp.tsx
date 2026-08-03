@@ -184,6 +184,9 @@ const formatMoney = (value: number) =>
     maximumFractionDigits: 2,
   }).format(value);
 
+const formatPercent = (value: number) =>
+  `${Number(value || 0).toLocaleString("es-EC", { maximumFractionDigits: 2 })}%`;
+
 const today = () => new Date().toISOString().slice(0, 10);
 
 function projectName(data: ERPData, projectId: string | null) {
@@ -220,6 +223,22 @@ function partnerStats(data: ERPData, partner: Partner) {
     investment,
     totalAvailable: partner.contribution + income + investment - expenses,
     movements: movements.length,
+  };
+}
+
+function projectParticipationStats(data: ERPData, projectId: string) {
+  const partners = data.partners.filter((partner) => partner.projectId === projectId);
+  const assigned = partners.reduce((sum, partner) => sum + partner.participation, 0);
+  const contribution = partners.reduce((sum, partner) => sum + partner.contribution, 0);
+  const budget = data.projects.find((project) => project.id === projectId)?.budget ?? 0;
+
+  return {
+    assigned,
+    remaining: Math.max(0, 100 - assigned),
+    over: Math.max(0, assigned - 100),
+    contribution,
+    surplus: Math.max(0, contribution - budget),
+    budgetGap: Math.max(0, budget - contribution),
   };
 }
 
@@ -457,6 +476,11 @@ export default function ProNApp() {
   const projectPartners = useMemo(
     () => data.partners.filter((partner) => partner.projectId === selectedProjectId),
     [data.partners, selectedProjectId],
+  );
+
+  const participationSummary = useMemo(
+    () => projectParticipationStats(data, selectedProjectId),
+    [data, selectedProjectId],
   );
 
   const filteredProjects = useMemo(() => {
@@ -1237,10 +1261,20 @@ export default function ProNApp() {
               <div className="panel-heading">
                 <h3>Socios e inversionistas</h3>
               </div>
+              <p className="body-copy">
+                Participacion asignada {formatPercent(participationSummary.assigned)}.
+                Disponible {formatPercent(participationSummary.remaining)}.
+                Excedente {formatPercent(participationSummary.over)}.
+                Capital real socios {formatMoney(participationSummary.contribution)}.
+                {participationSummary.surplus > 0
+                  ? ` Sobra ${formatMoney(participationSummary.surplus)} frente al presupuesto.`
+                  : ` Falta ${formatMoney(participationSummary.budgetGap)} frente al presupuesto.`}
+              </p>
               <div className="cards-grid">
                 {data.partners.map((partner) => (
                   (() => {
                     const stats = partnerStats(data, partner);
+                    const projectStats = projectParticipationStats(data, partner.projectId);
                     return (
                       <div className="data-card" key={partner.id}>
                         <span>{partner.type}</span>
@@ -1250,6 +1284,10 @@ export default function ProNApp() {
                           <b>{formatMoney(partner.contribution)}</b>
                           <b>{partner.participation}%</b>
                         </div>
+                        <small>
+                          Proyecto: {formatPercent(projectStats.assigned)} asignado,
+                          {" "}{formatPercent(projectStats.remaining)} disponible
+                        </small>
                         <small>Aportes/Inversiones: {formatMoney(stats.investment)}</small>
                         <small>Gastos asignados: {formatMoney(stats.expenses)}</small>
                         <small>Disponible: {formatMoney(stats.totalAvailable)}</small>

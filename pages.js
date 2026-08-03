@@ -176,6 +176,12 @@ function numberValue(value) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function percentLabel(value) {
+  return `${numberValue(value).toLocaleString("es-EC", {
+    maximumFractionDigits: 2,
+  })}%`;
+}
+
 function projectName(projectId) {
   if (!projectId) {
     return "Global";
@@ -203,6 +209,23 @@ function projectPartners(projectId) {
   return state.data.partners.filter((partner) => !projectId || partner.projectId === projectId);
 }
 
+function projectParticipationStats(projectId) {
+  const partners = projectPartners(projectId);
+  const assigned = partners.reduce((sum, partner) => sum + numberValue(partner.participation), 0);
+  const contribution = partners.reduce((sum, partner) => sum + numberValue(partner.contribution), 0);
+  const budget = numberValue(projectById(projectId)?.budget);
+
+  return {
+    assigned,
+    remaining: Math.max(0, 100 - assigned),
+    over: Math.max(0, assigned - 100),
+    contribution,
+    budget,
+    budgetGap: Math.max(0, budget - contribution),
+    surplus: Math.max(0, contribution - budget),
+  };
+}
+
 function partnerStats(partnerId) {
   const movements = state.data.movements.filter((movement) => movement.partnerId === partnerId);
   const income = movements
@@ -226,6 +249,27 @@ function partnerStats(partnerId) {
     movementBalance: income + investment - expenses,
     totalAvailable: contribution + income + investment - expenses,
   };
+}
+
+function validatePartnerParticipation(projectId, participation) {
+  const requested = numberValue(participation);
+  const current = projectParticipationStats(projectId);
+  const totalAfter = current.assigned + requested;
+
+  if (requested < 0) {
+    setMessage("La participacion no puede ser negativa.", "warning");
+    return false;
+  }
+
+  if (totalAfter > 100.0001) {
+    setMessage(
+      `No se puede guardar: disponible ${percentLabel(current.remaining)} y estas intentando agregar ${percentLabel(requested)}. Excedente ${percentLabel(totalAfter - 100)}.`,
+      "warning",
+    );
+    return false;
+  }
+
+  return true;
 }
 
 function accessName(projectId) {
@@ -832,6 +876,12 @@ async function submitAction(action, payload, successMessage) {
       logout("Sesion expirada. Entra de nuevo para guardar.");
       return;
     }
+    if (isValidationError(error)) {
+      setMessage(error.message, "warning");
+      updateConnection("Sistema activo", "ok");
+      render();
+      return;
+    }
     applyLocalAction(action, payload);
     saveLocalData();
     setMessage(successMessage);
@@ -840,6 +890,10 @@ async function submitAction(action, payload, successMessage) {
   } finally {
     setBusy(false);
   }
+}
+
+function isValidationError(error) {
+  return /obligatori|positivo|participacion|supera 100|no reconocida/i.test(error?.message || "");
 }
 
 function isLocalSession() {
@@ -1149,6 +1203,7 @@ function render() {
   renderMetrics();
   renderProjectSelects();
   renderPartnerSelects();
+  renderPartnerParticipationControls();
   renderCategorySelects();
   renderSummary();
   renderProjects();
@@ -1247,6 +1302,88 @@ function populatePartnerSelect(form, projectId) {
   partnerSelect.value = partners.some((partner) => partner.id === currentPartnerId)
     ? currentPartnerId
     : "";
+}
+
+function renderPartnerParticipationControls() {
+  renderPartnerParticipationForm(
+    $("#partnerForm"),
+    state.selectedProjectId,
+    "#partnerParticipationStatus",
+  );
+  renderPartnerParticipationForm(
+    $("#detailPartnerForm"),
+    state.detailProjectId || state.selectedProjectId,
+    "#detailPartnerParticipationStatus",
+  );
+  renderProjectParticipationSummary("#partnersEquitySummary", state.selectedProjectId);
+  renderProjectParticipationSummary(
+    "#detailPartnersEquitySummary",
+    state.detailProjectId || state.selectedProjectId,
+  );
+}
+
+function renderPartnerParticipationForm(form, projectId, statusSelector) {
+  const status = $(statusSelector);
+  if (!status) {
+    return;
+  }
+
+  if (!projectId) {
+    status.textContent = "Crea o abre un proyecto para calcular participaciones.";
+    status.className = "participation-status";
+    return;
+  }
+
+  const stats = projectParticipationStats(projectId);
+  const requested = numberValue(form?.elements.participation?.value);
+  const requestedContribution = numberValue(form?.elements.contribution?.value);
+  const totalAfter = stats.assigned + requested;
+  const remainingAfter = Math.max(0, 100 - totalAfter);
+  const overAfter = Math.max(0, totalAfter - 100);
+  const contributionAfter = stats.contribution + requestedContribution;
+  const budgetGapAfter = Math.max(0, stats.budget - contributionAfter);
+  const surplusAfter = Math.max(0, contributionAfter - stats.budget);
+  const input = form?.elements.participation;
+
+  if (input) {
+    input.placeholder = `Participacion % - disponible ${percentLabel(stats.remaining)}`;
+    input.setAttribute("min", "0");
+    input.setAttribute("max", String(stats.remaining));
+  }
+
+  status.className = `participation-status ${overAfter > 0 ? "warning" : totalAfter >= 100 ? "complete" : ""}`;
+  status.textContent =
+    `Asignado ${percentLabel(stats.assigned)} | Disponible ${percentLabel(stats.remaining)} | ` +
+    `Con este socio quedaria ${percentLabel(totalAfter)} | Libre despues ${percentLabel(remainingAfter)}` +
+    (overAfter > 0 ? ` | Excedente ${percentLabel(overAfter)}` : "") +
+    ` | Capital real quedaria ${money(contributionAfter)} | ` +
+    (surplusAfter > 0
+      ? `Sobra ${money(surplusAfter)} frente al presupuesto`
+      : `Falta ${money(budgetGapAfter)} frente al presupuesto`);
+}
+
+function renderProjectParticipationSummary(selector, projectId) {
+  const node = $(selector);
+  if (!node) {
+    return;
+  }
+
+  if (!projectId) {
+    node.textContent = "Selecciona un proyecto para ver porcentaje, capital real y sobrante.";
+    node.className = "participation-status";
+    return;
+  }
+
+  const stats = projectParticipationStats(projectId);
+  const budgetText = stats.surplus > 0
+    ? `Sobra frente al presupuesto ${money(stats.surplus)}`
+    : `Falta frente al presupuesto ${money(stats.budgetGap)}`;
+
+  node.className = `participation-status ${stats.over > 0 ? "warning" : stats.remaining === 0 ? "complete" : ""}`;
+  node.textContent =
+    `Proyecto ${projectName(projectId)}: asignado ${percentLabel(stats.assigned)}, ` +
+    `disponible ${percentLabel(stats.remaining)}, excedente ${percentLabel(stats.over)}. ` +
+    `Capital real socios ${money(stats.contribution)}. ${budgetText}.`;
 }
 
 function renderCategorySelects() {
@@ -1703,6 +1840,7 @@ function renderMovements() {
 
 function renderPartnerCard(partner) {
   const stats = partnerStats(partner.id);
+  const projectStats = projectParticipationStats(partner.projectId);
 
   return el("div", {}, [
     el("span", { text: partner.type }),
@@ -1710,6 +1848,9 @@ function renderPartnerCard(partner) {
     el("small", { text: projectName(partner.projectId) }),
     el("strong", {
       text: `Aporte base ${money(partner.contribution)} - ${numberValue(partner.participation)}%`,
+    }),
+    el("small", {
+      text: `Proyecto: ${percentLabel(projectStats.assigned)} asignado, ${percentLabel(projectStats.remaining)} disponible.`,
     }),
     el("ul", { class: "partner-metrics" }, [
       el("li", {}, [
@@ -2574,6 +2715,7 @@ function projectReportAnalysis(project, scope) {
   const users = scope.users.filter((user) => !user.projectId || user.projectId === project.id);
   const audit = scope.audit.filter((entry) => !entry.projectId || entry.projectId === project.id);
   const current = totalsForMovements(movements, [project]);
+  const participationStats = projectParticipationStats(project.id);
   const range = movementRange(movements);
   const adminTotals = administrationTotals(movements);
   const inventoryValue = inventory.reduce(
@@ -2616,6 +2758,8 @@ function projectReportAnalysis(project, scope) {
     current.income > 0 ? "" : "Registrar ingresos o cobros.",
     current.expenses > 0 ? "" : "Registrar gastos, pagos o cuentas por pagar.",
     partners.length ? "" : "Vincular socios, inversionistas o aliados.",
+    participationStats.remaining > 0 ? `Queda ${percentLabel(participationStats.remaining)} de participacion disponible por asignar.` : "",
+    participationStats.over > 0 ? `La participacion de socios excede 100% por ${percentLabel(participationStats.over)}.` : "",
     inventory.length ? "" : "Registrar inventario o activos.",
     canAdministrate(project) ? "" : "Cambiar estado a Aprobado, Inversion completada, Negocio activo o En funcion para administrar.",
     budgetGap > 0 ? `Falta ${money(budgetGap)} para igualar capital/ingresos con el presupuesto.` : "",
@@ -2630,6 +2774,7 @@ function projectReportAnalysis(project, scope) {
     users,
     audit,
     current,
+    participationStats,
     range,
     adminTotals,
     inventoryValue,
@@ -2698,6 +2843,11 @@ function buildProjectReportLines(analysis) {
     `Gastos: ${money(analysis.current.expenses)}`,
     `Balance total: ${money(analysis.current.balance)}`,
     `Balance operativo (ingresos - gastos): ${money(analysis.current.operationalBalance)}`,
+    `Participacion socios: asignada ${percentLabel(analysis.participationStats.assigned)}, disponible ${percentLabel(analysis.participationStats.remaining)}, excedente ${percentLabel(analysis.participationStats.over)}`,
+    `Capital real de socios: ${money(analysis.participationStats.contribution)}`,
+    analysis.participationStats.surplus > 0
+      ? `Sobrante de capital frente al presupuesto: ${money(analysis.participationStats.surplus)}`
+      : `Capital faltante frente al presupuesto: ${money(analysis.participationStats.budgetGap)}`,
     `Avance contra presupuesto: ${percent(analysis.budgetProgress)}`,
     `Uso del presupuesto en gastos: ${percent(analysis.spendProgress)}`,
     `Valor inventario/activos: ${money(analysis.inventoryValue)}`,
@@ -3268,6 +3418,10 @@ function bindEvents() {
   $("#movementForm").elements.type.addEventListener("change", renderCategorySelects);
   $("#detailMovementForm").elements.type.addEventListener("change", renderCategorySelects);
   $("#detailAdminForm").elements.type.addEventListener("change", renderCategorySelects);
+  $("#partnerForm").elements.participation.addEventListener("input", renderPartnerParticipationControls);
+  $("#partnerForm").elements.contribution.addEventListener("input", renderPartnerParticipationControls);
+  $("#detailPartnerForm").elements.participation.addEventListener("input", renderPartnerParticipationControls);
+  $("#detailPartnerForm").elements.contribution.addEventListener("input", renderPartnerParticipationControls);
   $("#backToProjectsButton").addEventListener("click", () => setActiveView("proyectos"));
   $("#detailPdfButton").addEventListener("click", () => {
     downloadProjectReport(state.detailProjectId || state.selectedProjectId);
@@ -3329,6 +3483,7 @@ function bindEvents() {
       "Proyecto creado.",
     );
     event.currentTarget.reset();
+    renderPartnerParticipationControls();
   });
 
   $("#movementForm").addEventListener("submit", (event) => {
@@ -3417,6 +3572,10 @@ function bindEvents() {
       return;
     }
     const data = formData(event.currentTarget);
+    if (!validatePartnerParticipation(state.selectedProjectId, data.participation)) {
+      renderPartnerParticipationControls();
+      return;
+    }
     submitAction(
       "create-partner",
       {
@@ -3428,6 +3587,7 @@ function bindEvents() {
       "Socio guardado.",
     );
     event.currentTarget.reset();
+    renderPartnerParticipationControls();
   });
 
   $("#detailPartnerForm").addEventListener("submit", (event) => {
@@ -3438,6 +3598,10 @@ function bindEvents() {
       return;
     }
     const data = formData(event.currentTarget);
+    if (!validatePartnerParticipation(projectId, data.participation)) {
+      renderPartnerParticipationControls();
+      return;
+    }
     submitAction(
       "create-partner",
       {

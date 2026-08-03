@@ -131,8 +131,10 @@ test("ships the GitHub Pages and Apps Script integration", async () => {
   assert.match(index, /Crear usuario/);
   assert.match(index, /Usuario de acceso/);
   assert.match(index, /Clave de acceso/);
-  assert.match(index, /20260803-socios-movimientos/);
+  assert.match(index, /20260803-participacion-socios/);
   assert.match(index, /Socio \/ responsable/);
+  assert.match(index, /partnerParticipationStatus/);
+  assert.match(index, /partnersEquitySummary/);
   assert.doesNotMatch(
     index,
     /Informe TXT|Descargar JSON|Google Sheet|Sincronizar Sheets|Apps Script no respondio|Base de datos local activa|Failed to fetch/i,
@@ -169,6 +171,9 @@ test("ships the GitHub Pages and Apps Script integration", async () => {
   assert.match(pages, /partnerStats/);
   assert.match(pages, /partnerName/);
   assert.match(pages, /MOVIMIENTOS ASIGNADOS/);
+  assert.match(pages, /projectParticipationStats/);
+  assert.match(pages, /validatePartnerParticipation/);
+  assert.match(pages, /Capital real socios/);
   assert.doesNotMatch(index, /Correo de invitacion|Enviar invitacion|Invitar usuario/i);
   assert.match(appsScript, /function doGet/);
   assert.match(appsScript, /function doPost/);
@@ -180,6 +185,7 @@ test("ships the GitHub Pages and Apps Script integration", async () => {
   assert.match(appsScript, /userByCredentials_/);
   assert.match(appsScript, /passwordHash/);
   assert.match(appsScript, /partnerId/);
+  assert.match(appsScript, /projectParticipationTotal_/);
   assert.match(appsScript, /deleteRowsByColumnValue_/);
   assert.match(appsScript, /text_\(payload\.status, "En revision"\)/);
   assert.match(appsScript, /1KCzz2B59PN3IvcyM2_G2uvTi8nA759oV7rUsaXvrcSY/);

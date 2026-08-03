@@ -345,11 +345,13 @@
                 </select>
                 <input name="contribution" inputmode="decimal" placeholder="Aporte USD" />
                 <input name="participation" inputmode="decimal" placeholder="Participacion %" />
+                <div id="partnerParticipationStatus" class="participation-status" aria-live="polite"></div>
                 <button type="submit">Guardar socio</button>
               </form>
             </article>
             <article class="panel wide">
               <h3>Socios e inversionistas</h3>
+              <div id="partnersEquitySummary" class="participation-status"></div>
               <div id="partnersCards" class="cards"></div>
             </article>
           </div>
@@ -673,6 +675,7 @@
                   </select>
                   <input name="contribution" inputmode="decimal" placeholder="Aporte USD" />
                   <input name="participation" inputmode="decimal" placeholder="Participacion %" />
+                  <div id="detailPartnerParticipationStatus" class="participation-status" aria-live="polite"></div>
                   <button type="submit">Guardar socio</button>
                 </form>
               </article>
@@ -730,6 +733,7 @@
 
               <article class="panel">
                 <h3>Socios del proyecto</h3>
+                <div id="detailPartnersEquitySummary" class="participation-status"></div>
                 <div id="detailPartnersCards" class="cards compact-cards"></div>
               </article>
 
@@ -755,6 +759,6 @@
       </section>
     </main>
 
-    <script src="pages.js?v=20260803-socios-movimientos"></script>
+    <script src="pages.js?v=20260803-participacion-socios"></script>
   </body>
 </html>

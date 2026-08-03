@@ -335,16 +335,41 @@ function createPartner_(payload) {
     throw new Error("Proyecto y nombre del socio son obligatorios.");
   }
 
+  var participation = number_(payload.participation);
+  var currentParticipation = projectParticipationTotal_(projectId);
+
+  if (participation < 0) {
+    throw new Error("La participacion no puede ser negativa.");
+  }
+
+  if (currentParticipation + participation > 100.0001) {
+    throw new Error(
+      "La participacion supera 100%. Disponible: " +
+        Math.max(0, 100 - currentParticipation) +
+        "%."
+    );
+  }
+
   appendObject_("Partners", {
     id: newId_("soc"),
     projectId: projectId,
     name: name,
     type: text_(payload.type, "Socio"),
     contribution: number_(payload.contribution),
-    participation: number_(payload.participation),
+    participation: participation,
     status: "Activo",
   });
   audit_("Socio agregado", name + " fue vinculado al proyecto.", projectId);
+}
+
+function projectParticipationTotal_(projectId) {
+  return readObjects_("Partners")
+    .filter(function (partner) {
+      return String(partner.projectId) === String(projectId);
+    })
+    .reduce(function (sum, partner) {
+      return sum + number_(partner.participation);
+    }, 0);
 }
 
 function createInventory_(payload) {
