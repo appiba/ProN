@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ProN | ERP Dashboard</title>
+    <meta
+      name="description"
+      content="ERP dashboard en espanol para negocios, proyectos y eventos."
+    />
+    <link rel="icon" href="public/favicon.svg" />
+    <link rel="stylesheet" href="pages.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <span>PN</span>
+          <div>
+            <h1>ProN</h1>
+            <p>ERP Dashboard</p>
+          </div>
+        </div>
+        <nav>
+          <a href="#resumen" class="active">Resumen</a>
+          <a href="#proyectos">Proyectos</a>
+          <a href="#finanzas">Finanzas</a>
+          <a href="#inventario">Inventario</a>
+          <a href="#usuarios">Usuarios</a>
+          <a href="#reportes">Reportes</a>
+        </nav>
+        <div class="session-card">
+          <small>Repositorio</small>
+          <strong>appiba/ProN</strong>
+          <span>Vista GitHub Pages</span>
+        </div>
+      </aside>
+
+      <section class="workspace">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">Panel general</p>
+            <h2>ProN para negocios, proyectos y eventos</h2>
+          </div>
+          <button id="syncButton" type="button">Sincronizar vista</button>
+        </header>
+
+        <section class="notice">
+          Esta es la vista web publicada en GitHub Pages. La version completa
+          con login seguro y base persistente esta en el codigo del repositorio.
+        </section>
+
+        <section class="metrics">
+          <article>
+            <span>Presupuesto total</span>
+            <strong>$347.000,00</strong>
+          </article>
+          <article>
+            <span>Ingresos</span>
+            <strong>$24.000,00</strong>
+          </article>
+          <article>
+            <span>Inversiones</span>
+            <strong>$52.000,00</strong>
+          </article>
+          <article>
+            <span>Gastos</span>
+            <strong>$27.950,00</strong>
+          </article>
+        </section>
+
+        <section class="grid" id="resumen">
+          <article class="panel wide">
+            <div class="panel-title">
+              <div>
+                <p class="eyebrow">Operacion</p>
+                <h3>Punto de equilibrio por proyecto</h3>
+              </div>
+              <span class="pill">Activo</span>
+            </div>
+            <div class="summary">
+              <div>
+                <small>Hotel Boutique Manta</small>
+                <strong>41%</strong>
+                <i style="--value: 41%"></i>
+              </div>
+              <div>
+                <small>Festival Corporativo Quito</small>
+                <strong>38%</strong>
+                <i style="--value: 38%"></i>
+              </div>
+              <div>
+                <small>Restaurante ProN Guayaquil</small>
+                <strong>9%</strong>
+                <i style="--value: 9%"></i>
+              </div>
+            </div>
+          </article>
+
+          <article class="panel">
+            <div class="panel-title">
+              <h3>Flujo reciente</h3>
+            </div>
+            <ul class="activity">
+              <li>
+                <b>Capital de socios</b>
+                <span>Hotel Boutique Manta - Inversion</span>
+                <strong>$52.000,00</strong>
+              </li>
+              <li>
+                <b>Patrocinio confirmado</b>
+                <span>Festival Corporativo Quito - Ingreso</span>
+                <strong>$24.000,00</strong>
+              </li>
+              <li>
+                <b>Equipamiento</b>
+                <span>Hotel Boutique Manta - Gasto</span>
+                <strong>$18.750,00</strong>
+              </li>
+            </ul>
+          </article>
+
+          <article class="panel">
+            <div class="panel-title">
+              <h3>Roles y permisos</h3>
+            </div>
+            <div class="roles">
+              <span>Superadministrador</span>
+              <span>Administrador de proyecto</span>
+              <span>Administrador financiero</span>
+              <span>Invitado</span>
+            </div>
+          </article>
+        </section>
+
+        <section class="panel wide" id="proyectos">
+          <div class="panel-title">
+            <div>
+              <p class="eyebrow">Gestion independiente</p>
+              <h3>Proyectos</h3>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Proyecto</th>
+                  <th>Tipo</th>
+                  <th>Presupuesto</th>
+                  <th>Estado</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Hotel Boutique Manta</td>
+                  <td>Negocio</td>
+                  <td>$185.000,00</td>
+                  <td><span class="pill">Activo</span></td>
+                </tr>
+                <tr>
+                  <td>Festival Corporativo Quito</td>
+                  <td>Evento</td>
+                  <td>$64.000,00</td>
+                  <td><span class="pill warning">En revision</span></td>
+                </tr>
+                <tr>
+                  <td>Restaurante ProN Guayaquil</td>
+                  <td>Apertura de local</td>
+                  <td>$98.000,00</td>
+                  <td><span class="pill">Activo</span></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="grid" id="finanzas">
+          <article class="panel">
+            <h3>Registrar movimiento</h3>
+            <form id="movementForm">
+              <select aria-label="Tipo">
+                <option>Gasto</option>
+                <option>Ingreso</option>
+                <option>Inversion</option>
+              </select>
+              <input placeholder="Concepto" required />
+              <input placeholder="Valor" inputmode="decimal" required />
+              <button type="submit">Agregar a la vista</button>
+            </form>
+          </article>
+          <article class="panel">
+            <h3>Inventario critico</h3>
+            <div class="cards">
+              <div>
+                <b>Mesas de servicio</b>
+                <span>24 unidades</span>
+              </div>
+              <div>
+                <b>Kit lenceria habitacion</b>
+                <span>80 unidades</span>
+              </div>
+            </div>
+          </article>
+        </section>
+      </section>
+    </main>
+    <script src="pages.js"></script>
+  </body>
+</html>
