@@ -1,16 +1,32 @@
 # ProN
 
-ERP dashboard en espanol para administrar negocios, proyectos y eventos.
+ERP dashboard en espanol para administrar negocios, proyectos, eventos,
+finanzas, socios, inventario, usuarios y reportes.
+
+## Version GitHub Pages
+
+La version publica vive en:
+
+`https://appiba.github.io/ProN/`
+
+Esta version usa Google Apps Script como backend y Google Sheets como base:
+
+- Apps Script Web App: `https://script.google.com/macros/s/AKfycbzf1TjxIBrBNJ6fTY5NNciAlWCl0PFKYgCpRXcdRg2S9aYKjMqDxeVCgC1JlcZet8iLNA/exec`
+- Google Sheet: `https://docs.google.com/spreadsheets/d/1KCzz2B59PN3IvcyM2_G2uvTi8nA759oV7rUsaXvrcSY/edit?gid=0#gid=0`
+
+El backend completo esta en `google-apps-script/Code.gs`. Ese archivo crea las
+pestanas de la hoja, valida el superadministrador, entrega sesion y guarda
+proyectos, movimientos, socios, inventario y usuarios.
 
 ## Funciones incluidas
 
-- Inicio de sesion para superadministrador con credenciales verificadas en servidor.
+- Inicio de sesion para superadministrador con credenciales verificadas en backend.
 - Datos iniciales de proyectos, finanzas, socios, inventario, usuarios y auditoria.
 - Separacion de informacion por proyecto.
 - Roles base: Superadministrador, Administrador de proyecto, Administrador financiero e Invitado.
-- Reportes descargables en TXT, CSV y grafico SVG.
+- Reportes descargables en TXT y CSV.
 - Configuracion inicial para Ecuador, USD y zona horaria America/Guayaquil.
-- Base D1 declarada para persistencia cuando se despliegue en un runtime compatible.
+- Persistencia en Google Sheets para GitHub Pages y D1 para runtime compatible.
 
 ## Desarrollo
 
@@ -20,4 +36,5 @@ pnpm run dev
 pnpm test
 ```
 
-La aplicacion usa Vinext, React y Cloudflare D1.
+La aplicacion usa Vinext, React, Cloudflare D1 y una version estatica para
+GitHub Pages conectada a Apps Script.

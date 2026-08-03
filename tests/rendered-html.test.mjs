@@ -5,7 +5,8 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 const templateRoot = new URL("../", import.meta.url);
-const sourceRoots = ["app", "db", "worker", "public"];
+const sourceRoots = ["app", "db", "worker", "public", "google-apps-script"];
+const rootTextFiles = ["README.md", "index.html", "pages.js", "pages.css"];
 const templateRootPath = fileURLToPath(templateRoot);
 
 async function collectTextFiles(directory) {
@@ -68,11 +69,12 @@ test("builds the ProN login shell", async () => {
 
 test("keeps private bootstrap credentials out of app source", async () => {
   const source = (
-    await Promise.all(
-      sourceRoots.map((root) =>
+    await Promise.all([
+      ...sourceRoots.map((root) =>
         collectTextFiles(path.join(templateRootPath, root)),
       ),
-    )
+      ...rootTextFiles.map((file) => readFile(path.join(templateRootPath, file), "utf8")),
+    ])
   )
     .flat()
     .join("\n");
@@ -86,4 +88,19 @@ test("keeps private bootstrap credentials out of app source", async () => {
   assert.doesNotMatch(source, oldBrandPattern);
   assert.doesNotMatch(source, new RegExp(escapeRegExp(privateEmail), "i"));
   assert.doesNotMatch(source, new RegExp(escapeRegExp(privatePassword)));
+});
+
+test("ships the GitHub Pages and Apps Script integration", async () => {
+  const index = await readFile(new URL("../index.html", import.meta.url), "utf8");
+  const pages = await readFile(new URL("../pages.js", import.meta.url), "utf8");
+  const appsScript = await readFile(
+    new URL("../google-apps-script/Code.gs", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(index, /ERP Dashboard conectado a Google Sheets/);
+  assert.match(pages, /AKfycbzf1TjxIBrBNJ6fTY5NNciAlWCl0PFKYgCpRXcdRg2S9aYKjMqDxeVCgC1JlcZet8iLNA/);
+  assert.match(appsScript, /function doGet/);
+  assert.match(appsScript, /function doPost/);
+  assert.match(appsScript, /1KCzz2B59PN3IvcyM2_G2uvTi8nA759oV7rUsaXvrcSY/);
 });
