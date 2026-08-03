@@ -63,79 +63,79 @@ var HEADERS = {
 };
 
 function doGet(e) {
+  var callback = e && e.parameter ? e.parameter.callback : "";
+
   try {
     setupWorkbook_();
-    var action = (e && e.parameter && e.parameter.action) || "health";
-
-    if (action === "health") {
-      return json_({
-        ok: true,
-        app: CONFIG.APP_NAME,
-        sheetId: CONFIG.SHEET_ID,
-        timezone: CONFIG.TIMEZONE,
-      });
-    }
-
-    return json_({
-      ok: true,
-      app: CONFIG.APP_NAME,
-      message: "Backend ProN listo.",
-    });
+    return respond_(handlePayload_(parseGetPayload_(e)), callback);
   } catch (error) {
-    return json_({ ok: false, error: errorMessage_(error) });
+    return respond_({ ok: false, error: errorMessage_(error) }, callback);
   }
 }
 
 function doPost(e) {
   try {
     setupWorkbook_();
-    var payload = parsePayload_(e);
-    var action = text_(payload.action);
-
-    if (action === "login") {
-      return login_(payload);
-    }
-
-    var user = requireSession_(payload.token);
-
-    if (action === "get-data") {
-      return json_({ ok: true, user: user, data: loadData_() });
-    }
-
-    if (action === "create-project") {
-      createProject_(payload);
-      return json_({ ok: true, user: user, data: loadData_() });
-    }
-
-    if (action === "create-movement") {
-      createMovement_(payload);
-      return json_({ ok: true, user: user, data: loadData_() });
-    }
-
-    if (action === "create-partner") {
-      createPartner_(payload);
-      return json_({ ok: true, user: user, data: loadData_() });
-    }
-
-    if (action === "create-inventory") {
-      createInventory_(payload);
-      return json_({ ok: true, user: user, data: loadData_() });
-    }
-
-    if (action === "create-user") {
-      createUser_(payload);
-      return json_({ ok: true, user: user, data: loadData_() });
-    }
-
-    if (action === "update-project-status") {
-      updateProjectStatus_(payload);
-      return json_({ ok: true, user: user, data: loadData_() });
-    }
-
-    throw new Error("Accion no reconocida.");
+    return respond_(handlePayload_(parsePayload_(e)));
   } catch (error) {
-    return json_({ ok: false, error: errorMessage_(error) });
+    return respond_({ ok: false, error: errorMessage_(error) });
   }
+}
+
+function handlePayload_(payload) {
+  var action = text_(payload.action, "health");
+
+  if (action === "health") {
+    return {
+      ok: true,
+      app: CONFIG.APP_NAME,
+      sheetId: CONFIG.SHEET_ID,
+      timezone: CONFIG.TIMEZONE,
+      data: loadData_(),
+    };
+  }
+
+  if (action === "login") {
+    return login_(payload);
+  }
+
+  var user = requireSession_(payload.token);
+
+  if (action === "get-data") {
+    return { ok: true, user: user, data: loadData_() };
+  }
+
+  if (action === "create-project") {
+    createProject_(payload);
+    return { ok: true, user: user, data: loadData_() };
+  }
+
+  if (action === "create-movement") {
+    createMovement_(payload);
+    return { ok: true, user: user, data: loadData_() };
+  }
+
+  if (action === "create-partner") {
+    createPartner_(payload);
+    return { ok: true, user: user, data: loadData_() };
+  }
+
+  if (action === "create-inventory") {
+    createInventory_(payload);
+    return { ok: true, user: user, data: loadData_() };
+  }
+
+  if (action === "create-user") {
+    createUser_(payload);
+    return { ok: true, user: user, data: loadData_() };
+  }
+
+  if (action === "update-project-status") {
+    updateProjectStatus_(payload);
+    return { ok: true, user: user, data: loadData_() };
+  }
+
+  throw new Error("Accion no reconocida.");
 }
 
 function setupProN() {
@@ -144,8 +144,11 @@ function setupProN() {
 }
 
 function login_(payload) {
-  var emailHash = sha256Hex_(text_(payload.email).toLowerCase());
-  var passwordHash = sha256Hex_(text_(payload.password) + ":" + CONFIG.PASSWORD_SALT);
+  var emailHash =
+    text_(payload.emailHash) || sha256Hex_(text_(payload.email).toLowerCase());
+  var passwordHash =
+    text_(payload.passwordHash) ||
+    sha256Hex_(text_(payload.password) + ":" + CONFIG.PASSWORD_SALT);
 
   if (
     emailHash !== CONFIG.SUPERADMIN_EMAIL_SHA256 ||
@@ -172,12 +175,12 @@ function login_(payload) {
     createdAt: now_(),
   });
 
-  return json_({
+  return {
     ok: true,
     token: token,
     user: superadmin_(),
     data: loadData_(),
-  });
+  };
 }
 
 function createProject_(payload) {
@@ -740,10 +743,50 @@ function parsePayload_(e) {
   }
 }
 
+function parseGetPayload_(e) {
+  var params = e && e.parameter ? e.parameter : {};
+  var payload = {};
+
+  if (params.payload) {
+    try {
+      payload = JSON.parse(params.payload);
+    } catch (error) {
+      payload = {};
+    }
+  }
+
+  Object.keys(params).forEach(function (key) {
+    if (key !== "payload" && key !== "callback") {
+      payload[key] = params[key];
+    }
+  });
+
+  return payload;
+}
+
+function respond_(payload, callback) {
+  if (callback) {
+    var name = callbackName_(callback);
+    return ContentService.createTextOutput(name + "(" + JSON.stringify(payload) + ");")
+      .setMimeType(ContentService.MimeType.JAVASCRIPT);
+  }
+
+  return ContentService.createTextOutput(JSON.stringify(payload))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
 function json_(payload) {
-  return ContentService.createTextOutput(JSON.stringify(payload)).setMimeType(
-    ContentService.MimeType.JSON
-  );
+  return respond_(payload);
+}
+
+function callbackName_(value) {
+  var name = String(value || "");
+
+  if (!/^[A-Za-z_$][0-9A-Za-z_$.]*$/.test(name)) {
+    throw new Error("Callback invalido.");
+  }
+
+  return name;
 }
 
 function errorMessage_(error) {

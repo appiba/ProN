@@ -15,8 +15,12 @@ Esta version usa Google Apps Script como backend y Google Sheets como base:
 - Google Sheet: `https://docs.google.com/spreadsheets/d/1KCzz2B59PN3IvcyM2_G2uvTi8nA759oV7rUsaXvrcSY/edit?gid=0#gid=0`
 
 El backend completo esta en `google-apps-script/Code.gs`. Ese archivo crea las
-pestanas de la hoja, valida el superadministrador, entrega sesion y guarda
-proyectos, movimientos, socios, inventario y usuarios.
+pestanas y encabezados de la hoja, valida el superadministrador, entrega sesion
+y guarda proyectos, movimientos, socios, inventario y usuarios.
+
+La pagina tambien incluye una base local del navegador para que el panel no se
+bloquee si Apps Script todavia no esta publicado. Cuando el Apps Script queda
+activo, ProN usa Google Sheets como base principal.
 
 ## Funciones incluidas
 
@@ -26,7 +30,8 @@ proyectos, movimientos, socios, inventario y usuarios.
 - Roles base: Superadministrador, Administrador de proyecto, Administrador financiero e Invitado.
 - Reportes descargables en TXT y CSV.
 - Configuracion inicial para Ecuador, USD y zona horaria America/Guayaquil.
-- Persistencia en Google Sheets para GitHub Pages y D1 para runtime compatible.
+- Persistencia en Google Sheets para GitHub Pages, con respaldo local del navegador.
+- D1 declarado para runtime compatible.
 
 ## Desarrollo
 

@@ -3,6 +3,13 @@ const APPS_SCRIPT_URL =
 const SHEET_URL =
   "https://docs.google.com/spreadsheets/d/1KCzz2B59PN3IvcyM2_G2uvTi8nA759oV7rUsaXvrcSY/edit?gid=0#gid=0";
 const TOKEN_KEY = "pron_session_token";
+const LOCAL_DB_KEY = "pron_local_database_v1";
+const LOCAL_TOKEN_PREFIX = "local-";
+const SUPERADMIN_EMAIL_SHA256 =
+  "88e0ce076c34f4b41124bf348680fcaf025f8bda0e1e13ad7339be6d6f359cec";
+const PASSWORD_SALT = "pron-apps-script-password-v1";
+const SUPERADMIN_PASSWORD_SHA256 =
+  "105682a7333783a9e62bee3a503321582a8df6b9ca899512c1f8f53c3b59803f";
 
 const fallbackData = {
   settings: {
@@ -173,11 +180,12 @@ const fallbackData = {
 const state = {
   token: sessionStorage.getItem(TOKEN_KEY) || "",
   user: null,
-  data: structuredClone(fallbackData),
+  data: loadLocalData(),
   activeTab: "resumen",
   selectedProjectId: fallbackData.projects[0].id,
   search: "",
   busy: false,
+  backend: "checking",
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -185,6 +193,31 @@ const $$ = (selector) => [...document.querySelectorAll(selector)];
 
 function today() {
   return new Date().toISOString().slice(0, 10);
+}
+
+function cloneData(data) {
+  return JSON.parse(JSON.stringify(data));
+}
+
+function loadLocalData() {
+  try {
+    const stored = localStorage.getItem(LOCAL_DB_KEY);
+    return stored ? normalizeData(JSON.parse(stored)) : cloneData(fallbackData);
+  } catch {
+    return cloneData(fallbackData);
+  }
+}
+
+function saveLocalData() {
+  localStorage.setItem(LOCAL_DB_KEY, JSON.stringify(state.data));
+}
+
+async function sha256Hex(value) {
+  const bytes = new TextEncoder().encode(value);
+  const hash = await crypto.subtle.digest("SHA-256", bytes);
+  return [...new Uint8Array(hash)]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
 }
 
 function money(value) {
@@ -236,44 +269,62 @@ async function callBackend(action, payload = {}, auth = true) {
     ...payload,
     token: auth ? state.token : payload.token,
   };
-  const response = await fetch(APPS_SCRIPT_URL, {
-    method: "POST",
-    redirect: "follow",
-    headers: {
-      "Content-Type": "text/plain;charset=utf-8",
-    },
-    body: JSON.stringify(body),
-  });
-  const text = await response.text();
-  let result;
 
-  try {
-    result = JSON.parse(text);
-  } catch {
-    throw new Error("Apps Script todavia no tiene el backend ProN instalado.");
-  }
+  const result = await jsonpRequest(body);
 
-  if (!response.ok || result.ok === false) {
+  if (result.ok === false) {
     throw new Error(result.error || "No se pudo completar la operacion.");
   }
 
   return result;
 }
 
+function jsonpRequest(payload) {
+  return new Promise((resolve, reject) => {
+    const callbackName = `pronCallback_${Date.now()}_${Math.round(
+      Math.random() * 100000,
+    )}`;
+    const script = document.createElement("script");
+    const timeout = window.setTimeout(() => {
+      cleanup();
+      reject(new Error("Apps Script no respondio. Base local activa."));
+    }, 10000);
+
+    function cleanup() {
+      window.clearTimeout(timeout);
+      delete window[callbackName];
+      script.remove();
+    }
+
+    window[callbackName] = (result) => {
+      cleanup();
+      resolve(result);
+    };
+
+    script.onerror = () => {
+      cleanup();
+      reject(new Error("Apps Script no respondio. Base local activa."));
+    };
+
+    const url = new URL(APPS_SCRIPT_URL);
+    url.searchParams.set("callback", callbackName);
+    url.searchParams.set("payload", JSON.stringify(payload));
+    script.src = url.toString();
+    document.head.append(script);
+  });
+}
+
 async function checkBackend() {
   try {
-    const response = await fetch(`${APPS_SCRIPT_URL}?action=health`, {
-      redirect: "follow",
-      cache: "no-store",
-    });
-    const text = await response.text();
-    const result = JSON.parse(text);
+    const result = await callBackend("health", {}, false);
+    state.backend = result.ok ? "ready" : "pending";
     $("#backendStatus").textContent = result.ok
-      ? "Apps Script listo"
-      : "Apps Script pendiente";
+      ? "Apps Script listo: Google Sheets activo"
+      : "Base local lista; Apps Script pendiente";
   } catch {
+    state.backend = "local";
     $("#backendStatus").textContent =
-      "Apps Script pendiente: falta pegar Code.gs y publicar";
+      "Base local lista; Apps Script aun no responde";
   }
 }
 
@@ -297,13 +348,15 @@ async function login(event) {
   event.preventDefault();
   setLoginMessage("");
   setBusy(true);
+  const emailHash = await sha256Hex($("#emailInput").value.trim().toLowerCase());
+  const passwordHash = await sha256Hex(`${$("#passwordInput").value}:${PASSWORD_SALT}`);
 
   try {
     const result = await callBackend(
       "login",
       {
-        email: $("#emailInput").value,
-        password: $("#passwordInput").value,
+        emailHash,
+        passwordHash,
         remember: $("#rememberInput").checked,
       },
       false,
@@ -318,13 +371,44 @@ async function login(event) {
     showDashboard();
     setMessage("Datos sincronizados con Google Sheets.");
   } catch (error) {
-    setLoginMessage(error.message);
+    if (
+      emailHash === SUPERADMIN_EMAIL_SHA256 &&
+      passwordHash === SUPERADMIN_PASSWORD_SHA256
+    ) {
+      state.token = `${LOCAL_TOKEN_PREFIX}${Date.now()}`;
+      state.user = {
+        name: "Administrador General",
+        role: "Superadministrador",
+        access: "Completo",
+      };
+      state.data = loadLocalData();
+      state.selectedProjectId = state.data.projects[0]?.id || "";
+      sessionStorage.setItem(TOKEN_KEY, state.token);
+      $("#loginForm").reset();
+      $("#rememberInput").checked = true;
+      showDashboard();
+      setMessage(
+        "Base de datos local activa. Publica el Apps Script para sincronizar con Google Sheets.",
+        "error",
+      );
+    } else {
+      setLoginMessage("Credenciales invalidas.");
+    }
   } finally {
     setBusy(false);
   }
 }
 
 async function refreshData() {
+  if (isLocalSession()) {
+    setMessage(
+      "Base local activa. Cuando el Apps Script responda, cierra sesion y entra de nuevo para conectar Google Sheets.",
+      "error",
+    );
+    render();
+    return;
+  }
+
   setBusy(true);
 
   try {
@@ -345,6 +429,22 @@ async function resumeSession() {
     return;
   }
 
+  if (isLocalSession()) {
+    state.user = {
+      name: "Administrador General",
+      role: "Superadministrador",
+      access: "Completo",
+    };
+    state.data = loadLocalData();
+    state.selectedProjectId = state.data.projects[0]?.id || "";
+    showDashboard();
+    setMessage(
+      "Base de datos local activa. Apps Script queda como sincronizacion pendiente.",
+      "error",
+    );
+    return;
+  }
+
   try {
     const result = await callBackend("get-data");
     state.user = result.user || {
@@ -362,6 +462,17 @@ async function resumeSession() {
 }
 
 async function submitAction(action, payload, successMessage) {
+  if (isLocalSession()) {
+    applyLocalAction(action, payload);
+    saveLocalData();
+    setMessage(
+      `${successMessage.replace("Google Sheets", "la base local")} Sincronizacion pendiente con Google Sheets.`,
+      "error",
+    );
+    render();
+    return;
+  }
+
   setBusy(true);
 
   try {
@@ -376,6 +487,137 @@ async function submitAction(action, payload, successMessage) {
     setMessage(error.message, "error");
   } finally {
     setBusy(false);
+  }
+}
+
+function isLocalSession() {
+  return state.token.startsWith(LOCAL_TOKEN_PREFIX);
+}
+
+function localId(prefix) {
+  return `${prefix}-${Date.now()}-${Math.round(Math.random() * 100000)}`;
+}
+
+function addAudit(action, detail, projectId = null) {
+  state.data.audit = [
+    {
+      id: localId("aud"),
+      action,
+      detail,
+      actorRole: "Superadministrador",
+      projectId,
+      createdAt: today(),
+    },
+    ...state.data.audit,
+  ];
+}
+
+function applyLocalAction(action, payload) {
+  state.data = cloneData(state.data);
+
+  if (action === "create-project") {
+    const id = localId("pro");
+    state.data.projects = [
+      {
+        id,
+        name: payload.name,
+        type: payload.type || "Proyecto personalizado",
+        country: payload.country || "Ecuador",
+        currency: payload.currency || "USD",
+        timezone: payload.timezone || "America/Guayaquil",
+        status: "Activo",
+        budget: numberValue(payload.budget),
+        objective: payload.objective || "Proyecto creado desde ProN.",
+        createdAt: today(),
+        updatedAt: today(),
+      },
+      ...state.data.projects,
+    ];
+    state.selectedProjectId = id;
+    addAudit("Proyecto creado", `${payload.name} quedo activo.`, id);
+    return;
+  }
+
+  if (action === "create-movement") {
+    state.data.movements = [
+      {
+        id: localId("mov"),
+        projectId: payload.projectId,
+        type: payload.type || "Gasto",
+        category: payload.category || "Operacion",
+        concept: payload.concept,
+        amount: numberValue(payload.amount),
+        movementDate: payload.movementDate || today(),
+        status: "Registrado",
+        createdAt: today(),
+      },
+      ...state.data.movements,
+    ];
+    addAudit(
+      "Movimiento registrado",
+      `${payload.type || "Gasto"}: ${payload.concept}.`,
+      payload.projectId,
+    );
+    return;
+  }
+
+  if (action === "create-partner") {
+    state.data.partners = [
+      {
+        id: localId("soc"),
+        projectId: payload.projectId,
+        name: payload.name,
+        type: payload.type || "Socio",
+        contribution: numberValue(payload.contribution),
+        participation: numberValue(payload.participation),
+        status: "Activo",
+      },
+      ...state.data.partners,
+    ];
+    addAudit("Socio agregado", `${payload.name} fue vinculado al proyecto.`, payload.projectId);
+    return;
+  }
+
+  if (action === "create-inventory") {
+    state.data.inventory = [
+      {
+        id: localId("inv"),
+        projectId: payload.projectId,
+        item: payload.item,
+        category: payload.category || "Inventario",
+        quantity: numberValue(payload.quantity),
+        unitCost: numberValue(payload.unitCost),
+        status: "Disponible",
+      },
+      ...state.data.inventory,
+    ];
+    addAudit("Inventario agregado", `${payload.item} quedo registrado.`, payload.projectId);
+    return;
+  }
+
+  if (action === "create-user") {
+    state.data.users = [
+      {
+        id: localId("usr"),
+        name: payload.name,
+        role: payload.role || "Invitado",
+        status: "Invitado",
+        projectId: payload.projectId || null,
+        createdAt: today(),
+      },
+      ...state.data.users,
+    ];
+    addAudit("Usuario invitado", `${payload.name} fue agregado como ${payload.role}.`);
+    return;
+  }
+
+  if (action === "update-project-status") {
+    state.data.projects = state.data.projects.map((project) =>
+      project.id === payload.projectId
+        ? { ...project, status: payload.status, updatedAt: today() }
+        : project,
+    );
+    addAudit("Estado actualizado", `Estado cambiado a ${payload.status}.`, payload.projectId);
   }
 }
 
