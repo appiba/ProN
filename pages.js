@@ -1375,15 +1375,35 @@ function renderProjectParticipationSummary(selector, projectId) {
   }
 
   const stats = projectParticipationStats(projectId);
-  const budgetText = stats.surplus > 0
-    ? `Sobra frente al presupuesto ${money(stats.surplus)}`
-    : `Falta frente al presupuesto ${money(stats.budgetGap)}`;
-
   node.className = `participation-status ${stats.over > 0 ? "warning" : stats.remaining === 0 ? "complete" : ""}`;
-  node.textContent =
-    `Proyecto ${projectName(projectId)}: asignado ${percentLabel(stats.assigned)}, ` +
-    `disponible ${percentLabel(stats.remaining)}, excedente ${percentLabel(stats.over)}. ` +
-    `Capital real socios ${money(stats.contribution)}. ${budgetText}.`;
+  node.replaceChildren(
+    el("div", { class: "equity-summary-grid" }, [
+      el("article", {}, [
+        el("span", { text: "Proyecto" }),
+        el("strong", { text: projectName(projectId) }),
+      ]),
+      el("article", {}, [
+        el("span", { text: "Asignado" }),
+        el("strong", { text: percentLabel(stats.assigned) }),
+      ]),
+      el("article", {}, [
+        el("span", { text: "Disponible" }),
+        el("strong", { text: percentLabel(stats.remaining) }),
+      ]),
+      el("article", {}, [
+        el("span", { text: "Excedente" }),
+        el("strong", { text: percentLabel(stats.over) }),
+      ]),
+      el("article", {}, [
+        el("span", { text: "Capital real socios" }),
+        el("strong", { text: money(stats.contribution) }),
+      ]),
+      el("article", {}, [
+        el("span", { text: stats.surplus > 0 ? "Sobra" : "Falta" }),
+        el("strong", { text: stats.surplus > 0 ? money(stats.surplus) : money(stats.budgetGap) }),
+      ]),
+    ]),
+  );
 }
 
 function renderCategorySelects() {
@@ -1840,19 +1860,24 @@ function renderMovements() {
 
 function renderPartnerCard(partner) {
   const stats = partnerStats(partner.id);
-  const projectStats = projectParticipationStats(partner.projectId);
 
-  return el("div", {}, [
-    el("span", { text: partner.type }),
-    el("b", { text: partner.name }),
-    el("small", { text: projectName(partner.projectId) }),
-    el("strong", {
-      text: `Aporte base ${money(partner.contribution)} - ${numberValue(partner.participation)}%`,
-    }),
-    el("small", {
-      text: `Proyecto: ${percentLabel(projectStats.assigned)} asignado, ${percentLabel(projectStats.remaining)} disponible.`,
-    }),
+  return el("div", { class: "partner-card" }, [
+    el("div", { class: "partner-card-head" }, [
+      el("div", {}, [
+        el("span", { text: partner.type }),
+        el("b", { text: partner.name }),
+        el("small", { text: projectName(partner.projectId) }),
+      ]),
+      el("strong", {
+        class: "partner-percent",
+        text: percentLabel(partner.participation),
+      }),
+    ]),
     el("ul", { class: "partner-metrics" }, [
+      el("li", {}, [
+        el("span", { text: "Aporte base" }),
+        el("b", { text: money(partner.contribution) }),
+      ]),
       el("li", {}, [
         el("span", { text: "Aportes/Inversiones" }),
         el("b", { text: money(stats.investment) }),
@@ -1863,15 +1888,16 @@ function renderPartnerCard(partner) {
       ]),
       el("li", {}, [
         el("span", { text: "Gastos asignados" }),
-        el("b", { text: money(stats.expenses) }),
+        el("b", { class: stats.expenses > 0 ? "negative-value" : "", text: money(stats.expenses) }),
       ]),
       el("li", {}, [
-        el("span", { text: "Disponible con aporte base" }),
-        el("b", { text: money(stats.totalAvailable) }),
+        el("span", { text: "Disponible total" }),
+        el("b", { class: stats.totalAvailable < 0 ? "negative-value" : "", text: money(stats.totalAvailable) }),
       ]),
     ]),
     el("small", {
-      text: `${stats.movements.length} movimiento(s) detallado(s) para este socio.`,
+      class: "partner-note",
+      text: `${stats.movements.length} movimiento(s) asignado(s).`,
     }),
     el("div", { class: "card-actions" }, [
       el("button", {

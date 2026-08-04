@@ -560,6 +560,10 @@ nav button:hover {
   width: auto;
 }
 
+.partners-project-panel {
+  overflow: hidden;
+}
+
 .pill {
   display: inline-flex;
   align-items: center;
@@ -928,10 +932,6 @@ nav button:hover {
   min-height: 92px;
 }
 
-.compact-cards {
-  grid-template-columns: 1fr;
-}
-
 .table-wrap {
   width: 100%;
   overflow-x: auto;
@@ -962,17 +962,54 @@ nav button:hover {
 
 .cards {
   display: grid;
-  grid-template-columns: repeat(3, minmax(180px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: 12px;
 }
 
-.cards div {
+.cards.compact-cards {
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+}
+
+.cards > div {
   display: grid;
   gap: 8px;
+  align-content: start;
+  min-width: 0;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #fff;
   padding: 14px;
+}
+
+.partner-card-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: start;
+}
+
+.partner-card-head div {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.partner-card-head b {
+  overflow-wrap: anywhere;
+}
+
+.partner-percent {
+  display: grid;
+  place-items: center;
+  min-width: 58px;
+  min-height: 40px;
+  border-radius: 8px;
+  background: var(--teal-soft);
+  color: #16564f;
+  font-size: 18px;
+  line-height: 1;
+  padding: 0 10px;
+  white-space: nowrap;
 }
 
 .cards .card-actions {
@@ -1008,11 +1045,32 @@ nav button:hover {
 
 .partner-metrics li {
   display: grid;
-  grid-template-columns: minmax(140px, 1fr) auto;
-  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) max-content;
+  gap: 10px;
   align-items: center;
   border-bottom: 1px solid var(--line);
   padding-bottom: 6px;
+  min-width: 0;
+}
+
+.partner-metrics span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.partner-metrics b {
+  min-width: 86px;
+  color: var(--ink);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.partner-note {
+  min-height: 18px;
+}
+
+.negative-value {
+  color: #8b2e1d !important;
 }
 
 .partner-metrics li:last-child {
@@ -1042,6 +1100,28 @@ nav button:hover {
   border-left-color: var(--coral);
   background: var(--red-soft);
   color: #8b2e1d;
+}
+
+.equity-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+}
+
+.equity-summary-grid article {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.equity-summary-grid span {
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.equity-summary-grid strong {
+  overflow-wrap: anywhere;
 }
 
 .bar-chart {

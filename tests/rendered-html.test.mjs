@@ -131,10 +131,11 @@ test("ships the GitHub Pages and Apps Script integration", async () => {
   assert.match(index, /Crear usuario/);
   assert.match(index, /Usuario de acceso/);
   assert.match(index, /Clave de acceso/);
-  assert.match(index, /20260803-participacion-socios/);
+  assert.match(index, /20260804-socios-claros/);
   assert.match(index, /Socio \/ responsable/);
   assert.match(index, /partnerParticipationStatus/);
   assert.match(index, /partnersEquitySummary/);
+  assert.match(index, /partners-project-panel/);
   assert.doesNotMatch(
     index,
     /Informe TXT|Descargar JSON|Google Sheet|Sincronizar Sheets|Apps Script no respondio|Base de datos local activa|Failed to fetch/i,
@@ -174,6 +175,7 @@ test("ships the GitHub Pages and Apps Script integration", async () => {
   assert.match(pages, /projectParticipationStats/);
   assert.match(pages, /validatePartnerParticipation/);
   assert.match(pages, /Capital real socios/);
+  assert.match(pages, /partner-card-head/);
   assert.doesNotMatch(index, /Correo de invitacion|Enviar invitacion|Invitar usuario/i);
   assert.match(appsScript, /function doGet/);
   assert.match(appsScript, /function doPost/);
