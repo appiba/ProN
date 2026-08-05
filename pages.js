@@ -24,6 +24,13 @@ const MOVEMENT_CATEGORIES = {
     "Pago",
     "Cuentas por pagar",
     "Proveedor",
+    "Venue / permisos",
+    "Seguridad / salud",
+    "Infraestructura publico",
+    "Produccion tecnica fiesta",
+    "Branding / ambientacion",
+    "Barras y control de consumo",
+    "Administracion / logistica",
     "Nomina",
     "Caja chica",
     "Activos",
@@ -39,6 +46,10 @@ const MOVEMENT_CATEGORIES = {
   ],
   Ingreso: [
     "Ventas",
+    "Venta entradas",
+    "Venta barra",
+    "Auspicios / marcas",
+    "Ticketing",
     "Ingreso operativo",
     "Cobro",
     "Caja diaria",
@@ -76,6 +87,7 @@ const PROJECT_STATUSES = [
   "En revision",
   "Aprobado",
   "Inversion completada",
+  "Evento en marcha",
   "Negocio activo",
   "En funcion",
   "Archivado",
@@ -83,11 +95,16 @@ const PROJECT_STATUSES = [
 const ADMIN_READY_STATUSES = new Set([
   "Aprobado",
   "Inversion completada",
+  "Evento en marcha",
   "Negocio activo",
   "En funcion",
 ]);
-const PAYMENT_OPEN_STATUSES = new Set(["Pendiente", "Programado", "Vence pronto"]);
-const PAYMENT_CLOSED_STATUSES = new Set(["Pagado", "Aprobado"]);
+const PAYMENT_OPEN_STATUSES = new Set(["Pendiente", "Programado", "Vence pronto", "Cotizado", "Proyectado"]);
+const PAYMENT_CLOSED_STATUSES = new Set(["Registrado", "Pagado", "Aprobado", "Cobrado"]);
+const FORECAST_STATUSES = new Set(["Cotizado", "Proyectado", "Programado", "Pendiente", "Vence pronto"]);
+const EVENT_STATUS = "Evento en marcha";
+const IVA_RATE = 0.15;
+const CONTINGENCY_RATE = 0.05;
 
 const fallbackData = {
   settings: {
@@ -252,6 +269,145 @@ function partnerStats(partnerId) {
   };
 }
 
+function isForecastMovement(movement) {
+  return FORECAST_STATUSES.has(movement?.status || "");
+}
+
+function isEventProject(project) {
+  if (!project) {
+    return false;
+  }
+
+  const type = String(project.type || "").toLowerCase();
+  const status = projectStatus(project);
+  const eventCategory = state.data.movements.some((movement) => {
+    if (movement.projectId !== project.id) {
+      return false;
+    }
+
+    const category = String(movement.category || "").toLowerCase();
+    return (
+      category.includes("venue") ||
+      category.includes("barra") ||
+      category.includes("ticket") ||
+      category.includes("auspicio") ||
+      category.includes("produccion tecnica")
+    );
+  });
+
+  return type.includes("evento") || status === EVENT_STATUS || eventCategory;
+}
+
+function sumMovements(movements, type, predicate = () => true) {
+  return movements
+    .filter((movement) => movement.type === type && predicate(movement))
+    .reduce((sum, movement) => sum + numberValue(movement.amount), 0);
+}
+
+function eventGroupedRows(movements, type) {
+  const grouped = new Map();
+
+  movements
+    .filter((movement) => movement.type === type)
+    .forEach((movement) => {
+      const key = movement.category || "Sin categoria";
+      const current = grouped.get(key) || {
+        type,
+        category: key,
+        total: 0,
+        projected: 0,
+        real: 0,
+        count: 0,
+      };
+      const value = numberValue(movement.amount);
+      current.total += value;
+      current.count += 1;
+      if (isForecastMovement(movement)) {
+        current.projected += value;
+      } else {
+        current.real += value;
+      }
+      grouped.set(key, current);
+    });
+
+  return [...grouped.values()].sort((a, b) => b.total - a.total);
+}
+
+function eventRowsStatus(row) {
+  if (!row.count) {
+    return "Sin registros";
+  }
+  if (row.projected && row.real) {
+    return "Mixto";
+  }
+  return row.projected ? "Proyectado" : "Real";
+}
+
+function eventFinancialSummary(project, movements, partners) {
+  const budget = numberValue(project?.budget);
+  const expenseRows = movements.filter((movement) => movement.type === "Gasto");
+  const incomeRows = movements.filter((movement) => movement.type === "Ingreso");
+  const investmentRows = movements.filter((movement) => movement.type === "Inversion");
+  const expenses = sumMovements(movements, "Gasto");
+  const realExpenses = sumMovements(movements, "Gasto", (movement) => !isForecastMovement(movement));
+  const plannedExpenses = sumMovements(movements, "Gasto", isForecastMovement);
+  const incomeExpected = sumMovements(movements, "Ingreso");
+  const incomeReal = sumMovements(movements, "Ingreso", (movement) => !isForecastMovement(movement));
+  const investment = sumMovements(movements, "Inversion");
+  const costTarget = Math.max(budget, expenses);
+  const subtotalNoIva = costTarget / (1 + IVA_RATE);
+  const ivaEstimated = costTarget - subtotalNoIva;
+  const contingency = subtotalNoIva * CONTINGENCY_RATE;
+  const profitExpected = incomeExpected - costTarget;
+  const profitReal = incomeReal - realExpenses;
+  const marginExpected = incomeExpected ? (profitExpected / incomeExpected) * 100 : 0;
+  const breakeven = costTarget ? (incomeExpected / costTarget) * 100 : 0;
+  const revenueGap = Math.max(0, costTarget - incomeExpected);
+  const capitalBase = partners.reduce((sum, partner) => sum + numberValue(partner.contribution), 0);
+  const scenarioBase = incomeExpected || costTarget;
+  const scenarios = [
+    { label: "Conservador", ratio: 0.85, note: "venta por debajo de la base" },
+    { label: "Base realista", ratio: 1, note: incomeExpected ? "venta esperada registrada" : "sin venta esperada cargada" },
+    { label: "Optimista", ratio: 1.15, note: "mejor desempeno comercial" },
+  ].map((scenario) => {
+    const revenue = scenarioBase * scenario.ratio;
+    const utility = revenue - costTarget;
+    return {
+      ...scenario,
+      revenue,
+      utility,
+      margin: revenue ? (utility / revenue) * 100 : 0,
+    };
+  });
+
+  return {
+    budget,
+    expenseRows,
+    incomeRows,
+    investmentRows,
+    expenses,
+    realExpenses,
+    plannedExpenses,
+    incomeExpected,
+    incomeReal,
+    investment,
+    costTarget,
+    subtotalNoIva,
+    ivaEstimated,
+    contingency,
+    profitExpected,
+    profitReal,
+    marginExpected,
+    breakeven,
+    revenueGap,
+    capitalBase,
+    scenarios,
+    partners,
+    costRows: eventGroupedRows(movements, "Gasto"),
+    incomeRowsByCategory: eventGroupedRows(movements, "Ingreso"),
+  };
+}
+
 function validatePartnerParticipation(projectId, participation) {
   const requested = numberValue(participation);
   const current = projectParticipationStats(projectId);
@@ -297,7 +453,7 @@ function statusClass(status) {
   if (status === "Archivado") {
     return "archived";
   }
-  if (status === "En funcion" || status === "Negocio activo") {
+  if (status === EVENT_STATUS || status === "En funcion" || status === "Negocio activo") {
     return "live";
   }
   if (status === "Aprobado" || status === "Inversion completada") {
@@ -2034,6 +2190,7 @@ function renderCandleChart(selector, movements) {
 function projectionSummary(projectId = summaryProjectId()) {
   const scope = reportScope(projectId);
   const analyses = scope.projects.map((project) => projectReportAnalysis(project, scope));
+  const eventSummary = analyses.length === 1 ? analyses[0].eventSummary : null;
   const capital = scope.current.income + scope.current.investment;
   const budgetGap = analyses.length
     ? analyses.reduce((sum, analysis) => sum + analysis.budgetGap, 0)
@@ -2060,6 +2217,7 @@ function projectionSummary(projectId = summaryProjectId()) {
   return {
     scope,
     analyses,
+    eventSummary,
     capital,
     budgetGap,
     operatingGap,
@@ -2085,6 +2243,42 @@ function projectionMetric(label, value, note, tone = "") {
 }
 
 function renderProjectionMetrics(selector, summary) {
+  if (summary.eventSummary) {
+    const event = summary.eventSummary;
+    replaceChildren(selector, [
+      projectionMetric(
+        "Costo fijo",
+        money(event.costTarget),
+        `IVA ref. ${money(event.ivaEstimated)}`,
+      ),
+      projectionMetric(
+        "Venta esperada",
+        money(event.incomeExpected),
+        event.incomeReal ? `cobrado ${money(event.incomeReal)}` : "pendiente de cobro real",
+        event.incomeExpected >= event.costTarget && event.costTarget ? "good" : "warning",
+      ),
+      projectionMetric(
+        "Utilidad",
+        money(event.profitExpected),
+        `margen ${percentLabel(event.marginExpected)}`,
+        event.profitExpected < 0 ? "danger" : "good",
+      ),
+      projectionMetric(
+        "Equilibrio",
+        percentLabel(event.breakeven),
+        event.revenueGap ? `faltan ${money(event.revenueGap)}` : "costo cubierto",
+        event.revenueGap ? "warning" : "good",
+      ),
+      projectionMetric(
+        "Expediente",
+        `${summary.completion}%`,
+        projectStatus(summary.scope.projects[0]),
+        summary.completion >= 80 ? "good" : "warning",
+      ),
+    ]);
+    return;
+  }
+
   replaceChildren(selector, [
     projectionMetric(
       "Capital real",
@@ -2127,6 +2321,47 @@ function projectionInsightNodes(summary) {
       el("div", { class: "warning" }, [
         el("strong", { text: "Sin proyecto registrado" }),
         el("span", { text: "Crea un proyecto real para que ProN calcule presupuesto, capital, brecha y proyeccion." }),
+      ]),
+    );
+    return nodes;
+  }
+
+  if (summary.eventSummary) {
+    const event = summary.eventSummary;
+    nodes.push(
+      el("div", { class: event.revenueGap ? "warning" : "" }, [
+        el("strong", { text: event.revenueGap ? "Venta por completar" : "Venta cubre costo fijo" }),
+        el("span", {
+          text: event.revenueGap
+            ? `Falta vender o cobrar ${money(event.revenueGap)} para cubrir el costo fijo del evento.`
+            : `La venta esperada cubre el costo fijo y deja utilidad de ${money(event.profitExpected)}.`,
+        }),
+      ]),
+    );
+    nodes.push(
+      el("div", { class: event.profitExpected < 0 ? "danger" : "" }, [
+        el("strong", { text: "Utilidad operativa" }),
+        el("span", {
+          text: `Utilidad esperada ${money(event.profitExpected)}, utilidad real registrada ${money(event.profitReal)} y margen ${percentLabel(event.marginExpected)}.`,
+        }),
+      ]),
+    );
+    nodes.push(
+      el("div", {}, [
+        el("strong", { text: "Socios y reparto" }),
+        el("span", {
+          text: `${event.partners.length} socio(s) vinculados. El reparto de utilidad se calcula con el porcentaje registrado.`,
+        }),
+      ]),
+    );
+    nodes.push(
+      el("div", { class: summary.dataShared ? "" : "warning" }, [
+        el("strong", { text: summary.dataShared ? "Datos compartidos" : "Datos solo aqui" }),
+        el("span", {
+          text: summary.dataShared
+            ? "La informacion del evento esta en el respaldo central del link."
+            : "Pulsa Actualizar cuando termines para subir este evento al respaldo central.",
+        }),
       ]),
     );
     return nodes;
@@ -2193,11 +2428,114 @@ function projectionInsightNodes(summary) {
   return nodes;
 }
 
+function renderEventProjectionPlane(selector, event) {
+  const container = $(selector);
+  const width = 960;
+  const height = 300;
+  const padding = { top: 42, right: 42, bottom: 58, left: 84 };
+  const points = [
+    { label: "Costo fijo", value: event.costTarget, color: "#d95f43" },
+    { label: "Venta esperada", value: event.incomeExpected, color: "#315f9f" },
+    { label: "Cobrado", value: event.incomeReal, color: "#0f766e" },
+    { label: "Utilidad", value: event.profitExpected, color: event.profitExpected < 0 ? "#d95f43" : "#0f766e" },
+    { label: "Capital socios", value: event.capitalBase + event.investment, color: "#f2b84b" },
+    { label: "Brecha venta", value: event.revenueGap, color: event.revenueGap ? "#d95f43" : "#0f766e" },
+  ];
+  const values = points.map((point) => point.value);
+  const high = Math.max(1, ...values);
+  const low = Math.min(0, ...values);
+  const range = Math.max(1, high - low);
+  const yScale = (value) =>
+    padding.top + ((high - value) / range) * (height - padding.top - padding.bottom);
+  const xStep = (width - padding.left - padding.right) / (points.length - 1);
+  const positioned = points.map((point, index) => ({
+    ...point,
+    x: padding.left + xStep * index,
+    y: yScale(point.value),
+  }));
+  const path = positioned.map((point, index) => `${index ? "L" : "M"} ${point.x} ${point.y}`).join(" ");
+  const zeroY = yScale(0);
+  const costY = yScale(event.costTarget);
+
+  const svg = svgNode("svg", {
+    viewBox: `0 0 ${width} ${height}`,
+    role: "img",
+    "aria-label": "Plano operativo del evento en marcha",
+  }, [
+    svgNode("line", {
+      x1: padding.left,
+      x2: width - padding.right,
+      y1: zeroY,
+      y2: zeroY,
+      stroke: "#10201d",
+      "stroke-width": "1.2",
+    }),
+    svgNode("line", {
+      x1: padding.left,
+      x2: width - padding.right,
+      y1: costY,
+      y2: costY,
+      stroke: "#d95f43",
+      "stroke-width": "1",
+      "stroke-dasharray": "6 7",
+    }),
+    svgNode("text", {
+      x: padding.left,
+      y: Math.max(16, costY - 8),
+      fill: "#8b2e1d",
+      "font-size": "12",
+      "font-weight": "800",
+    }, [document.createTextNode("linea de costo fijo")]),
+    svgNode("path", {
+      d: path,
+      fill: "none",
+      stroke: "#10201d",
+      "stroke-width": "2",
+      "stroke-linecap": "round",
+      "stroke-linejoin": "round",
+      opacity: "0.42",
+    }),
+    ...positioned.flatMap((point) => [
+      svgNode("circle", {
+        cx: point.x,
+        cy: point.y,
+        r: "8",
+        fill: point.color,
+        stroke: "#ffffff",
+        "stroke-width": "3",
+      }),
+      svgNode("text", {
+        x: point.x,
+        y: height - 24,
+        "text-anchor": "middle",
+        fill: "#65736f",
+        "font-size": "12",
+        "font-weight": "800",
+      }, [document.createTextNode(point.label)]),
+      svgNode("text", {
+        x: point.x,
+        y: Math.max(18, point.y - 14),
+        "text-anchor": "middle",
+        fill: point.color,
+        "font-size": "12",
+        "font-weight": "900",
+      }, [document.createTextNode(money(point.value).replace(",00", ""))]),
+    ]),
+  ]);
+
+  container.replaceChildren(svg);
+}
+
 function renderProjectionPlane(selector, summary) {
   const container = $(selector);
 
   if (!summary.scope.projects.length) {
     container.replaceChildren(el("div", { class: "empty-state", text: "Crea un proyecto para ver el plano financiero." }));
+    return;
+  }
+
+  if (summary.eventSummary) {
+    renderEventProjectionPlane(selector, summary.eventSummary);
     return;
   }
 
@@ -2745,11 +3083,13 @@ function updateProjectStatus(projectId, status, successMessage = "Estado del pro
 }
 
 function activateProjectAdministration(projectId) {
+  const project = projectById(projectId);
+  const nextStatus = isEventProject(project) ? EVENT_STATUS : "Negocio activo";
   state.selectedProjectId = projectId;
   state.summaryScopeId = projectId;
   state.detailProjectId = projectId;
   setActiveView("proyecto-detalle");
-  updateProjectStatus(projectId, "Negocio activo", "Negocio activo. Administracion disponible.");
+  updateProjectStatus(projectId, nextStatus, `${nextStatus}. Administracion disponible.`);
   scrollToAdminArea();
 }
 
@@ -2775,6 +3115,165 @@ function administrationTotals(movements) {
       .filter((movement) => movement.type === "Gasto" && PAYMENT_OPEN_STATUSES.has(movement.status))
       .reduce((sum, movement) => sum + numberValue(movement.amount), 0),
   };
+}
+
+function renderEventMetric(label, value, note, tone = "") {
+  return el("article", { class: tone }, [
+    el("span", { text: label }),
+    el("strong", { text: value }),
+    el("small", { text: note }),
+  ]);
+}
+
+function renderEventControlPanel(project, movements, partners) {
+  const panel = $("#eventControlPanel");
+  if (!panel) {
+    return;
+  }
+
+  if (!isEventProject(project)) {
+    panel.classList.add("is-hidden");
+    return;
+  }
+
+  panel.classList.remove("is-hidden");
+  const summary = eventFinancialSummary(project, movements, partners);
+  setTextIfExists("#eventControlPill", projectStatus(project));
+
+  replaceChildren("#eventScorecards", [
+    renderEventMetric(
+      "Costo fijo",
+      money(summary.costTarget),
+      `Base sin IVA ${money(summary.subtotalNoIva)}`,
+      summary.costTarget ? "" : "warning",
+    ),
+    renderEventMetric(
+      "IVA estimado",
+      money(summary.ivaEstimated),
+      `${percentLabel(IVA_RATE * 100)} referencial`,
+    ),
+    renderEventMetric(
+      "Venta total esperada",
+      money(summary.incomeExpected),
+      summary.incomeReal ? `cobrado ${money(summary.incomeReal)}` : "sin cobro real registrado",
+      summary.incomeExpected >= summary.costTarget && summary.costTarget ? "good" : "warning",
+    ),
+    renderEventMetric(
+      "Utilidad esperada",
+      money(summary.profitExpected),
+      `margen ${percentLabel(summary.marginExpected)}`,
+      summary.profitExpected < 0 ? "danger" : "good",
+    ),
+    renderEventMetric(
+      "Punto de equilibrio",
+      percentLabel(summary.breakeven),
+      summary.revenueGap ? `faltan ventas por ${money(summary.revenueGap)}` : "ventas cubren costos",
+      summary.revenueGap ? "warning" : "good",
+    ),
+    renderEventMetric(
+      "Capital socios",
+      money(summary.capitalBase + summary.investment),
+      `${partners.length} socio(s) vinculados`,
+    ),
+  ]);
+
+  const rows = [
+    {
+      type: "Costo fijo",
+      category: "Presupuesto registrado",
+      total: summary.costTarget,
+      base: summary.subtotalNoIva,
+      iva: summary.ivaEstimated,
+      status: "Meta",
+    },
+    {
+      type: "Reserva",
+      category: "Imprevistos 5%",
+      total: summary.contingency,
+      base: summary.contingency,
+      iva: 0,
+      status: "Referencia",
+    },
+    ...summary.costRows.map((row) => ({
+      type: "Costo",
+      category: row.category,
+      total: row.total,
+      base: row.total / (1 + IVA_RATE),
+      iva: row.total - row.total / (1 + IVA_RATE),
+      status: eventRowsStatus(row),
+    })),
+    ...summary.incomeRowsByCategory.map((row) => ({
+      type: "Ingreso",
+      category: row.category,
+      total: row.total,
+      base: row.total,
+      iva: 0,
+      status: eventRowsStatus(row),
+    })),
+  ];
+
+  replaceChildren(
+    "#eventBudgetBody",
+    rows.map((row) =>
+      el("tr", {}, [
+        el("td", { text: row.type }),
+        el("td", { text: row.category }),
+        el("td", { text: money(row.base) }),
+        el("td", { text: row.iva ? money(row.iva) : "-" }),
+        el("td", { text: money(row.total) }),
+        el("td", {}, [
+          el("span", {
+            class: `pill ${row.status === "Real" ? "live" : row.status === "Meta" ? "approved" : "review"}`,
+            text: row.status,
+          }),
+        ]),
+      ]),
+    ),
+  );
+
+  replaceChildren(
+    "#eventScenarioCards",
+    summary.scenarios.map((scenario) =>
+      el("article", { class: scenario.utility < 0 ? "danger" : "good" }, [
+        el("span", { text: scenario.label }),
+        el("strong", { text: money(scenario.utility) }),
+        el("small", { text: `${money(scenario.revenue)} venta | margen ${percentLabel(scenario.margin)}` }),
+        el("em", { text: scenario.note }),
+      ]),
+    ),
+  );
+
+  replaceChildren(
+    "#eventPartnerShare",
+    partners.length
+      ? partners.map((partner) => {
+          const participation = numberValue(partner.participation);
+          const utility = summary.profitExpected * (participation / 100);
+          const capitalNeed = summary.costTarget * (participation / 100);
+          const stats = partnerStats(partner.id);
+
+          return el("article", {}, [
+            el("div", {}, [
+              el("span", { text: `${partner.type} | ${percentLabel(participation)}` }),
+              el("strong", { text: partner.name }),
+            ]),
+            el("dl", {}, [
+              el("dt", { text: "Inversion segun %" }),
+              el("dd", { text: money(capitalNeed) }),
+              el("dt", { text: "Aporte real" }),
+              el("dd", { text: money(numberValue(partner.contribution) + stats.investment) }),
+              el("dt", { text: "Utilidad asignada" }),
+              el("dd", { class: utility < 0 ? "negative-value" : "", text: money(utility) }),
+            ]),
+          ]);
+        })
+      : [
+          el("article", { class: "warning" }, [
+            el("strong", { text: "Sin socios vinculados" }),
+            el("span", { text: "Agrega socios con porcentaje para ver inversion y utilidad por persona." }),
+          ]),
+        ],
+  );
 }
 
 function renderProjectStatusPanel(project) {
@@ -2809,7 +3308,7 @@ function renderProjectStatusPanel(project) {
     "#adminGateMessage",
     ready
       ? "Administracion disponible para pagos, gastos operativos, cobros y cuentas por pagar."
-      : "Ya puedes registrar pagos, gastos y cobros. Cambia el estado a Aprobado, Negocio activo o En funcion cuando el negocio este listo para operar formalmente.",
+      : "Ya puedes registrar pagos, gastos y cobros. Cambia el estado a Aprobado, Evento en marcha, Negocio activo o En funcion cuando este listo para operar formalmente.",
   );
 }
 
@@ -2940,6 +3439,7 @@ function renderProjectDetail() {
   setTextIfExists("#detailExpenses", money(current.expenses));
   setTextIfExists("#detailArchiveButton", projectStatus(project) === "Archivado" ? "Restaurar" : "Archivar");
   renderProjectStatusPanel(project);
+  renderEventControlPanel(project, movements, partners);
   renderAdministration(project, movements);
   renderProjectionDashboard({
     metrics: "#detailProjectionMetrics",
@@ -3531,6 +4031,9 @@ function projectReportAnalysis(project, scope) {
     budgetGap > 0 ? `Falta ${money(budgetGap)} para igualar capital/ingresos con el presupuesto.` : "",
     operatingGap > 0 ? `Falta ${money(operatingGap)} para igualar ingresos operativos con gastos.` : "",
   ].filter(Boolean);
+  const eventSummary = isEventProject(project)
+    ? eventFinancialSummary(project, movements, partners)
+    : null;
 
   return {
     project,
@@ -3556,7 +4059,64 @@ function projectReportAnalysis(project, scope) {
     monthsToCoverBudget,
     completion,
     missing,
+    eventSummary,
   };
+}
+
+function buildEventReportLines(summary) {
+  if (!summary) {
+    return [];
+  }
+
+  const categoryRows = [
+    { type: "Costo fijo", category: "Presupuesto registrado", total: summary.costTarget, status: "Meta" },
+    { type: "Reserva", category: "Imprevistos 5%", total: summary.contingency, status: "Referencia" },
+    ...summary.costRows.map((row) => ({
+      type: "Costo",
+      category: row.category,
+      total: row.total,
+      status: eventRowsStatus(row),
+    })),
+    ...summary.incomeRowsByCategory.map((row) => ({
+      type: "Ingreso",
+      category: row.category,
+      total: row.total,
+      status: eventRowsStatus(row),
+    })),
+  ];
+  const partnerLines = summary.partners.map((partner) => {
+    const participation = numberValue(partner.participation);
+    const utility = summary.profitExpected * (participation / 100);
+    const capitalNeed = summary.costTarget * (participation / 100);
+    const stats = partnerStats(partner.id);
+    return `- ${partner.name}: ${percentLabel(participation)} | inversion segun porcentaje ${money(capitalNeed)} | aporte real ${money(numberValue(partner.contribution) + stats.investment)} | utilidad asignada ${money(utility)}`;
+  });
+
+  return [
+    "CONTROL DEL EVENTO EN MARCHA",
+    `Costo fijo/meta: ${money(summary.costTarget)} | Base sin IVA: ${money(summary.subtotalNoIva)} | IVA estimado 15%: ${money(summary.ivaEstimated)} | Imprevistos 5%: ${money(summary.contingency)}`,
+    `Venta total esperada: ${money(summary.incomeExpected)} | Cobrado real: ${money(summary.incomeReal)} | Capital socios/inversion: ${money(summary.capitalBase + summary.investment)}`,
+    `Utilidad esperada: ${money(summary.profitExpected)} | Utilidad real registrada: ${money(summary.profitReal)} | Margen esperado: ${percentLabel(summary.marginExpected)} | Punto de equilibrio: ${percentLabel(summary.breakeven)}`,
+    summary.revenueGap
+      ? `Brecha comercial: faltan ventas por ${money(summary.revenueGap)} para cubrir costo fijo.`
+      : "Brecha comercial: la venta esperada cubre el costo fijo registrado.",
+    "",
+    ...reportLines(
+      "Costos e ingresos por categoria:",
+      categoryRows,
+      (row) => `- ${row.type} | ${row.category} | ${money(row.total)} | ${row.status}`,
+    ),
+    "",
+    ...reportLines(
+      "Escenarios de utilidad:",
+      summary.scenarios,
+      (scenario) =>
+        `- ${scenario.label}: venta ${money(scenario.revenue)} | utilidad ${money(scenario.utility)} | margen ${percentLabel(scenario.margin)} | ${scenario.note}`,
+    ),
+    "",
+    ...reportLines("Reparto de socios:", partnerLines, (line) => line),
+    "",
+  ];
 }
 
 function projectConclusion(analysis) {
@@ -3623,6 +4183,7 @@ function buildProjectReportLines(analysis) {
     `Proyeccion: ${projectionText(analysis)}`,
     `Conclusion: ${projectConclusion(analysis)}`,
     "",
+    ...buildEventReportLines(analysis.eventSummary),
     ...reportLines("Faltantes por completar o igualar:", analysis.missing, (item) => `- ${item}`),
     "",
     ...reportLines("Totales por categoria:", categoryRows, (row) => `- ${row.label}: ${money(row.value)}`),
@@ -3957,12 +4518,25 @@ function buildExecutiveReportPage(projectId = summaryProjectId()) {
   const completion = analyses.length
     ? Math.round(analyses.reduce((sum, analysis) => sum + analysis.completion, 0) / analyses.length)
     : 0;
+  const eventSummaries = analyses.map((analysis) => analysis.eventSummary).filter(Boolean);
+  const eventIncomeExpected = eventSummaries.reduce((sum, summary) => sum + summary.incomeExpected, 0);
+  const eventProfitExpected = eventSummaries.reduce((sum, summary) => sum + summary.profitExpected, 0);
+  const eventCostTarget = eventSummaries.reduce((sum, summary) => sum + summary.costTarget, 0);
+  const eventBreakeven = eventCostTarget ? (eventIncomeExpected / eventCostTarget) * 100 : 0;
   const cardWidth = 172;
   const cardHeight = 54;
   const gap = 12;
   const startX = 36;
   const startY = 650;
+  const eventCards = eventSummaries.length
+    ? [
+        ["Venta evento", money(eventIncomeExpected), PIE_COLORS[1]],
+        ["Utilidad evento", money(eventProfitExpected), eventProfitExpected < 0 ? "#d95f43" : "#0f766e"],
+        ["Equilibrio evento", percentLabel(eventBreakeven), eventBreakeven >= 100 ? "#0f766e" : "#f2b84b"],
+      ]
+    : [];
   const cards = [
+    ...eventCards,
     ["Presupuesto", money(scope.current.budget), PIE_COLORS[0]],
     ["Capital real", money(capital), PIE_COLORS[1]],
     ["Balance", money(scope.current.balance), "#10201d"],
@@ -3973,7 +4547,7 @@ function buildExecutiveReportPage(projectId = summaryProjectId()) {
     ["Gastos", money(scope.current.expenses), PIE_COLORS[3]],
     ["Pendiente", money(adminTotals.pending), "#d95f43"],
     ["Expediente", `${completion}%`, "#5b7f67"],
-  ];
+  ].slice(0, 10);
   const commands = [
     pdfRect(0, 0, 612, 792, { fill: "#f6f8f5", stroke: null }),
     pdfText("ProN", 36, 754, 20, "#10201d", true),

@@ -142,7 +142,12 @@ test("ships the GitHub Pages and Apps Script integration", async () => {
   assert.match(index, /Crear usuario/);
   assert.match(index, /Usuario de acceso/);
   assert.match(index, /Clave de acceso/);
-  assert.match(index, /20260805-persistencia/);
+  assert.match(index, /20260805-evento-marcha/);
+  assert.match(index, /eventControlPanel/);
+  assert.match(index, /eventScorecards/);
+  assert.match(index, /eventBudgetBody/);
+  assert.match(index, /eventScenarioCards/);
+  assert.match(index, /eventPartnerShare/);
   assert.match(index, /Socio \/ responsable/);
   assert.match(index, /partnerParticipationStatus/);
   assert.match(index, /partnersEquitySummary/);
@@ -182,6 +187,13 @@ test("ships the GitHub Pages and Apps Script integration", async () => {
   assert.match(pages, /openProject/);
   assert.match(pages, /PROJECT_STATUSES/);
   assert.match(pages, /ADMIN_READY_STATUSES/);
+  assert.match(pages, /Evento en marcha/);
+  assert.match(pages, /eventFinancialSummary/);
+  assert.match(pages, /renderEventControlPanel/);
+  assert.match(pages, /renderEventProjectionPlane/);
+  assert.match(pages, /buildEventReportLines/);
+  assert.match(pages, /IVA_RATE/);
+  assert.match(pages, /CONTINGENCY_RATE/);
   assert.match(pages, /administrationTotals/);
   assert.match(pages, /activateProjectAdministration/);
   assert.match(pages, /Negocio activo/);

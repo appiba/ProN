@@ -1012,7 +1012,7 @@ nav button:hover {
 
 .status-flow {
   display: grid;
-  grid-template-columns: repeat(5, minmax(120px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
   gap: 8px;
 }
 
@@ -1060,7 +1060,7 @@ nav button:hover {
 
 .admin-workspace {
   display: grid;
-  grid-template-columns: minmax(360px, 0.75fr) minmax(560px, 1.25fr);
+  grid-template-columns: minmax(320px, 0.62fr) minmax(640px, 1.38fr);
   gap: 14px;
   align-items: start;
 }
@@ -1072,6 +1072,119 @@ nav button:hover {
 
 .admin-records-panel .table-wrap {
   min-height: 360px;
+}
+
+.event-control-panel {
+  border-left: 5px solid var(--gold);
+}
+
+.event-scorecards {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(140px, 1fr));
+  gap: 10px;
+}
+
+.event-scorecards article,
+.event-scenarios article,
+.event-partner-share article {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfb;
+  padding: 12px;
+}
+
+.event-scorecards article {
+  min-height: 96px;
+  border-top: 4px solid var(--blue);
+}
+
+.event-scorecards article.good,
+.event-scenarios article.good {
+  border-top-color: var(--teal);
+}
+
+.event-scorecards article.warning,
+.event-scenarios article.warning {
+  border-top-color: var(--gold);
+  background: var(--amber-soft);
+}
+
+.event-scorecards article.danger,
+.event-scenarios article.danger {
+  border-top-color: var(--coral);
+  background: var(--red-soft);
+}
+
+.event-scorecards span,
+.event-scenarios span,
+.event-partner-share span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.event-scorecards strong,
+.event-scenarios strong,
+.event-partner-share strong {
+  color: var(--ink);
+  font-size: 20px;
+  overflow-wrap: anywhere;
+}
+
+.event-scorecards small,
+.event-scenarios small,
+.event-scenarios em {
+  color: var(--muted);
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.event-layout {
+  display: grid;
+  grid-template-columns: minmax(620px, 1.35fr) minmax(320px, 0.65fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.event-layout h4 {
+  margin: 0 0 10px;
+  color: var(--ink);
+  font-size: 15px;
+}
+
+.event-scenarios,
+.event-partner-share {
+  display: grid;
+  gap: 10px;
+}
+
+.event-scenarios {
+  margin-bottom: 16px;
+}
+
+.event-partner-share dl {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max-content;
+  gap: 7px 12px;
+  margin: 0;
+}
+
+.event-partner-share dt {
+  color: var(--muted);
+}
+
+.event-partner-share dd {
+  margin: 0;
+  color: var(--ink);
+  font-weight: 900;
+  text-align: right;
+  white-space: nowrap;
 }
 
 .compact-metrics .metrics article,
@@ -1364,6 +1477,7 @@ nav button:hover {
   .ops-strip,
   .grid,
   .admin-workspace,
+  .event-layout,
   .projection-layout,
   .toolbar,
   .settings-grid,
@@ -1395,6 +1509,10 @@ nav button:hover {
   .projection-metrics,
   .projection-metrics.compact {
     grid-template-columns: 1fr;
+  }
+
+  .event-scorecards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .projection-metric {
@@ -1437,5 +1555,9 @@ nav button:hover {
 
   .metrics strong {
     font-size: 24px;
+  }
+
+  .event-scorecards {
+    grid-template-columns: 1fr;
   }
 }

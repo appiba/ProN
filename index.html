@@ -314,6 +314,14 @@
                 <input name="concept" placeholder="Concepto" required />
                 <input name="amount" inputmode="decimal" placeholder="Valor" required />
                 <input name="movementDate" type="date" required />
+                <select name="status">
+                  <option>Registrado</option>
+                  <option>Cotizado</option>
+                  <option>Proyectado</option>
+                  <option>Pagado</option>
+                  <option>Pendiente</option>
+                  <option>Cobrado</option>
+                </select>
                 <button type="submit">Registrar movimiento</button>
               </form>
             </article>
@@ -621,6 +629,9 @@
                     <input name="movementDate" type="date" required />
                     <select name="status">
                       <option>Pagado</option>
+                      <option>Cobrado</option>
+                      <option>Cotizado</option>
+                      <option>Proyectado</option>
                       <option>Pendiente</option>
                       <option>Programado</option>
                       <option>Vence pronto</option>
@@ -662,6 +673,43 @@
             </section>
 
             <div class="grid">
+              <article id="eventControlPanel" class="panel wide event-control-panel is-hidden">
+                <div class="panel-title">
+                  <div>
+                    <p class="eyebrow">Evento en marcha</p>
+                    <h3>Control financiero del evento</h3>
+                  </div>
+                  <span id="eventControlPill" class="pill">Evento</span>
+                </div>
+                <div id="eventScorecards" class="event-scorecards"></div>
+                <div class="event-layout">
+                  <article>
+                    <h4>Costos e ingresos del evento</h4>
+                    <div class="table-wrap">
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>Bloque</th>
+                            <th>Categoria</th>
+                            <th>Base</th>
+                            <th>IVA/ref.</th>
+                            <th>Total</th>
+                            <th>Estado</th>
+                          </tr>
+                        </thead>
+                        <tbody id="eventBudgetBody"></tbody>
+                      </table>
+                    </div>
+                  </article>
+                  <article>
+                    <h4>Escenarios de utilidad</h4>
+                    <div id="eventScenarioCards" class="event-scenarios"></div>
+                    <h4>Reparto de socios</h4>
+                    <div id="eventPartnerShare" class="event-partner-share"></div>
+                  </article>
+                </div>
+              </article>
+
               <article class="panel wide projection-panel">
                 <div class="panel-title">
                   <div>
@@ -703,6 +751,14 @@
                   <input name="concept" placeholder="Concepto" required />
                   <input name="amount" inputmode="decimal" placeholder="Valor" required />
                   <input name="movementDate" type="date" required />
+                  <select name="status">
+                    <option>Registrado</option>
+                    <option>Cotizado</option>
+                    <option>Proyectado</option>
+                    <option>Pagado</option>
+                    <option>Pendiente</option>
+                    <option>Cobrado</option>
+                  </select>
                   <button type="submit">Guardar movimiento</button>
                 </form>
               </article>
@@ -804,6 +860,6 @@
       </section>
     </main>
 
-    <script src="pages.js?v=20260805-persistencia"></script>
+    <script src="pages.js?v=20260805-evento-marcha"></script>
   </body>
 </html>
