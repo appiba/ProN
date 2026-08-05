@@ -142,12 +142,14 @@ test("ships the GitHub Pages and Apps Script integration", async () => {
   assert.match(index, /Crear usuario/);
   assert.match(index, /Usuario de acceso/);
   assert.match(index, /Clave de acceso/);
-  assert.match(index, /20260805-evento-marcha/);
+  assert.match(index, /20260805-perro-negro/);
   assert.match(index, /eventControlPanel/);
   assert.match(index, /eventScorecards/);
   assert.match(index, /eventBudgetBody/);
   assert.match(index, /eventScenarioCards/);
   assert.match(index, /eventPartnerShare/);
+  assert.match(index, /eventReferencePanel/);
+  assert.match(index, /eventReferenceGallery/);
   assert.match(index, /Socio \/ responsable/);
   assert.match(index, /partnerParticipationStatus/);
   assert.match(index, /partnersEquitySummary/);
@@ -192,6 +194,10 @@ test("ships the GitHub Pages and Apps Script integration", async () => {
   assert.match(pages, /renderEventControlPanel/);
   assert.match(pages, /renderEventProjectionPlane/);
   assert.match(pages, /buildEventReportLines/);
+  assert.match(pages, /EVENT_REFERENCE_ASSETS/);
+  assert.match(pages, /eventReferenceAssets/);
+  assert.match(pages, /renderEventReferencePanel/);
+  assert.match(pages, /ibarra-resumen\.png/);
   assert.match(pages, /IVA_RATE/);
   assert.match(pages, /CONTINGENCY_RATE/);
   assert.match(pages, /administrationTotals/);

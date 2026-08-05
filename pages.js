@@ -105,6 +105,29 @@ const FORECAST_STATUSES = new Set(["Cotizado", "Proyectado", "Programado", "Pend
 const EVENT_STATUS = "Evento en marcha";
 const IVA_RATE = 0.15;
 const CONTINGENCY_RATE = 0.05;
+const PERRO_NEGRO_PROJECT_ID = "pro-db533379-0c00-4ef4-9602-5c164a15b31c";
+const EVENT_REFERENCE_ASSETS = [
+  {
+    match: ["perro negro"],
+    title: "Resumen financiero Ibarra",
+    src: "public/perro-negro/ibarra-resumen.png",
+  },
+  {
+    match: ["perro negro"],
+    title: "Presupuesto detallado 1",
+    src: "public/perro-negro/ibarra-presupuesto-1.png",
+  },
+  {
+    match: ["perro negro"],
+    title: "Presupuesto detallado 2",
+    src: "public/perro-negro/ibarra-presupuesto-2.png",
+  },
+  {
+    match: ["perro negro"],
+    title: "Escenarios y reparto",
+    src: "public/perro-negro/ibarra-escenarios.png",
+  },
+];
 
 const fallbackData = {
   settings: {
@@ -273,19 +296,36 @@ function isForecastMovement(movement) {
   return FORECAST_STATUSES.has(movement?.status || "");
 }
 
+function normalizedSearchText(value) {
+  return String(value || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+function eventReferenceAssets(project) {
+  const target = normalizedSearchText(
+    `${project?.name || ""} ${project?.type || ""} ${project?.objective || ""}`,
+  );
+
+  return EVENT_REFERENCE_ASSETS.filter((asset) =>
+    asset.match.every((piece) => target.includes(piece)),
+  );
+}
+
 function isEventProject(project) {
   if (!project) {
     return false;
   }
 
-  const type = String(project.type || "").toLowerCase();
+  const type = normalizedSearchText(project.type);
   const status = projectStatus(project);
   const eventCategory = state.data.movements.some((movement) => {
     if (movement.projectId !== project.id) {
       return false;
     }
 
-    const category = String(movement.category || "").toLowerCase();
+    const category = normalizedSearchText(movement.category);
     return (
       category.includes("venue") ||
       category.includes("barra") ||
@@ -363,7 +403,8 @@ function eventFinancialSummary(project, movements, partners) {
   const marginExpected = incomeExpected ? (profitExpected / incomeExpected) * 100 : 0;
   const breakeven = costTarget ? (incomeExpected / costTarget) * 100 : 0;
   const revenueGap = Math.max(0, costTarget - incomeExpected);
-  const capitalBase = partners.reduce((sum, partner) => sum + numberValue(partner.contribution), 0);
+  const partnerContribution = partners.reduce((sum, partner) => sum + numberValue(partner.contribution), 0);
+  const capitalBase = Math.max(partnerContribution, investment);
   const scenarioBase = incomeExpected || costTarget;
   const scenarios = [
     { label: "Conservador", ratio: 0.85, note: "venta por debajo de la base" },
@@ -400,6 +441,7 @@ function eventFinancialSummary(project, movements, partners) {
     marginExpected,
     breakeven,
     revenueGap,
+    partnerContribution,
     capitalBase,
     scenarios,
     partners,
@@ -1341,9 +1383,162 @@ function applyLocalAction(action, payload) {
   }
 }
 
+function perroNegroSeed(projectId = PERRO_NEGRO_PROJECT_ID) {
+  const date = "2026-08-05";
+  const project = {
+    id: projectId,
+    name: "Fiesta Perro Negro | Ibarra",
+    type: "Evento",
+    country: "Ecuador",
+    currency: "USD",
+    timezone: "America/Guayaquil",
+    status: EVENT_STATUS,
+    budget: 53487.15,
+    objective:
+      "Fiesta Perro Negro en Casa Blanca, Ibarra. Evento en marcha con control de venue, permisos, seguridad, produccion, barra, marketing, socios y utilidad.",
+    createdAt: date,
+    updatedAt: date,
+  };
+  const partners = [
+    {
+      id: "prt-perro-negro-socio-1",
+      projectId,
+      name: "Socio 1",
+      type: "Socio",
+      contribution: 13371.79,
+      participation: 25,
+      status: "Activo",
+      createdAt: date,
+    },
+    {
+      id: "prt-perro-negro-socio-2",
+      projectId,
+      name: "Socio 2",
+      type: "Socio",
+      contribution: 13371.79,
+      participation: 25,
+      status: "Activo",
+      createdAt: date,
+    },
+    {
+      id: "prt-perro-negro-180-producciones",
+      projectId,
+      name: "180 Producciones",
+      type: "Socio",
+      contribution: 26743.58,
+      participation: 50,
+      status: "Activo",
+      createdAt: date,
+    },
+  ];
+  const movements = [
+    ["mov-perro-negro-venue-permisos", "Gasto", "Venue / permisos", "Locacion Casa Blanca, permisos, contingencia, mapa y seguro", 7410, "Cotizado", ""],
+    ["mov-perro-negro-seguridad-salud", "Gasto", "Seguridad / salud", "Seguridad privada, supervision y ambulancia con paramedicos", 1845.75, "Cotizado", ""],
+    ["mov-perro-negro-infraestructura-publico", "Gasto", "Infraestructura publico", "Banos portatiles, vallas, control de accesos y carpas de taquilla", 1196, "Cotizado", ""],
+    ["mov-perro-negro-produccion-tecnica", "Gasto", "Produccion tecnica fiesta", "Artistas, sonido, iluminacion, pantalla, tarima, generador, DJ y operadores", 28112.5, "Cotizado", ""],
+    ["mov-perro-negro-branding", "Gasto", "Branding / ambientacion", "Decoracion tematica Perro Negro y experiencia de marca", 1725, "Cotizado", ""],
+    ["mov-perro-negro-marketing", "Gasto", "Marketing", "KV, pauta digital, influencers, foto video e impresos", 2185, "Cotizado", ""],
+    ["mov-perro-negro-personal", "Gasto", "Personal", "Direccion de produccion, logistica, staff de barras y alimentacion", 3022.5, "Cotizado", ""],
+    ["mov-perro-negro-barras-control", "Gasto", "Barras y control de consumo", "Montaje barra, sistema cashless, vasos, hielo e insumos base", 1897.5, "Cotizado", ""],
+    ["mov-perro-negro-admin-logistica", "Gasto", "Administracion / logistica", "Administrativo, contable, cierre, transportes, bus de personal y hospedaje crew", 3395, "Cotizado", ""],
+    ["mov-perro-negro-imprevistos", "Gasto", "Contingencia", "Imprevistos 5% sobre produccion incluida", 2697.9, "Proyectado", ""],
+    ["mov-perro-negro-venta-entradas", "Ingreso", "Venta entradas", "Venta promedio / boleteria neta esperada", 46000, "Proyectado", ""],
+    ["mov-perro-negro-venta-barra", "Ingreso", "Venta barra", "Barra neta esperada", 29900, "Proyectado", ""],
+    ["mov-perro-negro-inversion-socio-1", "Inversion", "Capital de socios", "Inversion Socio 1 segun cuadro de socios 25%", 13371.79, "Registrado", "prt-perro-negro-socio-1"],
+    ["mov-perro-negro-inversion-socio-2", "Inversion", "Capital de socios", "Inversion Socio 2 segun cuadro de socios 25%", 13371.79, "Registrado", "prt-perro-negro-socio-2"],
+    ["mov-perro-negro-inversion-180", "Inversion", "Capital de socios", "Inversion 180 Producciones segun cuadro de socios 50%", 26743.58, "Registrado", "prt-perro-negro-180-producciones"],
+  ].map(([id, type, category, concept, amount, status, partnerId]) => ({
+    id,
+    projectId,
+    type,
+    category,
+    concept,
+    amount,
+    movementDate: date,
+    status,
+    partnerId,
+    createdAt: date,
+  }));
+
+  return {
+    project,
+    partners,
+    movements,
+    audit: {
+      id: "aud-perro-negro-import",
+      action: "Evento cargado",
+      detail: "Presupuesto Ibarra importado con costos, ingresos, socios y utilidad esperada.",
+      actorRole: "Superadministrador",
+      projectId,
+      createdAt: date,
+    },
+  };
+}
+
+function hasEquivalentMovement(rows, seed) {
+  return rows.some(
+    (row) =>
+      row.id === seed.id ||
+      (row.projectId === seed.projectId &&
+        row.type === seed.type &&
+        normalizedSearchText(row.category) === normalizedSearchText(seed.category) &&
+        normalizedSearchText(row.concept) === normalizedSearchText(seed.concept) &&
+        Math.abs(numberValue(row.amount) - numberValue(seed.amount)) < 0.01),
+  );
+}
+
+function withOfficialSeeds(data) {
+  const existingProject = data.projects.find(
+    (project) =>
+      project.id === PERRO_NEGRO_PROJECT_ID ||
+      normalizedSearchText(project.name).includes("perro negro"),
+  );
+  const projectId = existingProject?.id || PERRO_NEGRO_PROJECT_ID;
+  const seed = perroNegroSeed(projectId);
+  const projects = existingProject
+    ? data.projects.map((project) =>
+        project.id === projectId
+          ? {
+              ...project,
+              ...seed.project,
+              id: project.id,
+              createdAt: project.createdAt || seed.project.createdAt,
+            }
+          : project,
+      )
+    : [seed.project, ...data.projects];
+  const partners = [
+    ...data.partners,
+    ...seed.partners.filter(
+      (partner) =>
+        !data.partners.some(
+          (row) =>
+            row.id === partner.id ||
+            (row.projectId === projectId &&
+              normalizedSearchText(row.name) === normalizedSearchText(partner.name)),
+        ),
+    ),
+  ];
+  const movements = [
+    ...data.movements,
+    ...seed.movements.filter((movement) => !hasEquivalentMovement(data.movements, movement)),
+  ];
+  const audit = data.audit.some((entry) => entry.id === seed.audit.id)
+    ? data.audit
+    : [seed.audit, ...data.audit];
+
+  return {
+    ...data,
+    projects,
+    partners,
+    movements,
+    audit,
+  };
+}
+
 function normalizeData(data) {
   const next = data || fallbackData;
-  return {
+  return withOfficialSeeds({
     settings: { ...fallbackData.settings, ...(next.settings || {}) },
     projects: Array.isArray(next.projects) ? next.projects : [],
     movements: Array.isArray(next.movements) ? next.movements : [],
@@ -1351,7 +1546,7 @@ function normalizeData(data) {
     inventory: Array.isArray(next.inventory) ? next.inventory : [],
     users: Array.isArray(next.users) ? next.users : [],
     audit: Array.isArray(next.audit) ? next.audit : [],
-  };
+  });
 }
 
 function isCleanStartData(data) {
@@ -2438,7 +2633,7 @@ function renderEventProjectionPlane(selector, event) {
     { label: "Venta esperada", value: event.incomeExpected, color: "#315f9f" },
     { label: "Cobrado", value: event.incomeReal, color: "#0f766e" },
     { label: "Utilidad", value: event.profitExpected, color: event.profitExpected < 0 ? "#d95f43" : "#0f766e" },
-    { label: "Capital socios", value: event.capitalBase + event.investment, color: "#f2b84b" },
+    { label: "Capital socios", value: event.capitalBase, color: "#f2b84b" },
     { label: "Brecha venta", value: event.revenueGap, color: event.revenueGap ? "#d95f43" : "#0f766e" },
   ];
   const values = points.map((point) => point.value);
@@ -3172,7 +3367,7 @@ function renderEventControlPanel(project, movements, partners) {
     ),
     renderEventMetric(
       "Capital socios",
-      money(summary.capitalBase + summary.investment),
+      money(summary.capitalBase),
       `${partners.length} socio(s) vinculados`,
     ),
   ]);
@@ -3251,6 +3446,7 @@ function renderEventControlPanel(project, movements, partners) {
           const utility = summary.profitExpected * (participation / 100);
           const capitalNeed = summary.costTarget * (participation / 100);
           const stats = partnerStats(partner.id);
+          const realContribution = Math.max(numberValue(partner.contribution), stats.investment);
 
           return el("article", {}, [
             el("div", {}, [
@@ -3261,7 +3457,7 @@ function renderEventControlPanel(project, movements, partners) {
               el("dt", { text: "Inversion segun %" }),
               el("dd", { text: money(capitalNeed) }),
               el("dt", { text: "Aporte real" }),
-              el("dd", { text: money(numberValue(partner.contribution) + stats.investment) }),
+              el("dd", { text: money(realContribution) }),
               el("dt", { text: "Utilidad asignada" }),
               el("dd", { class: utility < 0 ? "negative-value" : "", text: money(utility) }),
             ]),
@@ -3273,6 +3469,32 @@ function renderEventControlPanel(project, movements, partners) {
             el("span", { text: "Agrega socios con porcentaje para ver inversion y utilidad por persona." }),
           ]),
         ],
+  );
+}
+
+function renderEventReferencePanel(project) {
+  const panel = $("#eventReferencePanel");
+  if (!panel) {
+    return;
+  }
+
+  const assets = eventReferenceAssets(project);
+  if (!assets.length) {
+    panel.classList.add("is-hidden");
+    return;
+  }
+
+  panel.classList.remove("is-hidden");
+  replaceChildren(
+    "#eventReferenceGallery",
+    assets.map((asset) =>
+      el("figure", {}, [
+        el("a", { href: asset.src, target: "_blank", rel: "noopener" }, [
+          el("img", { src: asset.src, alt: asset.title, loading: "lazy" }),
+        ]),
+        el("figcaption", { text: asset.title }),
+      ]),
+    ),
   );
 }
 
@@ -3440,6 +3662,7 @@ function renderProjectDetail() {
   setTextIfExists("#detailArchiveButton", projectStatus(project) === "Archivado" ? "Restaurar" : "Archivar");
   renderProjectStatusPanel(project);
   renderEventControlPanel(project, movements, partners);
+  renderEventReferencePanel(project);
   renderAdministration(project, movements);
   renderProjectionDashboard({
     metrics: "#detailProjectionMetrics",
@@ -4089,13 +4312,14 @@ function buildEventReportLines(summary) {
     const utility = summary.profitExpected * (participation / 100);
     const capitalNeed = summary.costTarget * (participation / 100);
     const stats = partnerStats(partner.id);
-    return `- ${partner.name}: ${percentLabel(participation)} | inversion segun porcentaje ${money(capitalNeed)} | aporte real ${money(numberValue(partner.contribution) + stats.investment)} | utilidad asignada ${money(utility)}`;
+    const realContribution = Math.max(numberValue(partner.contribution), stats.investment);
+    return `- ${partner.name}: ${percentLabel(participation)} | inversion segun porcentaje ${money(capitalNeed)} | aporte real ${money(realContribution)} | utilidad asignada ${money(utility)}`;
   });
 
   return [
     "CONTROL DEL EVENTO EN MARCHA",
     `Costo fijo/meta: ${money(summary.costTarget)} | Base sin IVA: ${money(summary.subtotalNoIva)} | IVA estimado 15%: ${money(summary.ivaEstimated)} | Imprevistos 5%: ${money(summary.contingency)}`,
-    `Venta total esperada: ${money(summary.incomeExpected)} | Cobrado real: ${money(summary.incomeReal)} | Capital socios/inversion: ${money(summary.capitalBase + summary.investment)}`,
+    `Venta total esperada: ${money(summary.incomeExpected)} | Cobrado real: ${money(summary.incomeReal)} | Capital socios/inversion: ${money(summary.capitalBase)}`,
     `Utilidad esperada: ${money(summary.profitExpected)} | Utilidad real registrada: ${money(summary.profitReal)} | Margen esperado: ${percentLabel(summary.marginExpected)} | Punto de equilibrio: ${percentLabel(summary.breakeven)}`,
     summary.revenueGap
       ? `Brecha comercial: faltan ventas por ${money(summary.revenueGap)} para cubrir costo fijo.`
