@@ -99,6 +99,7 @@ type ActionPayload = {
   concept?: string;
   amount?: number;
   movementDate?: string;
+  movementId?: string;
   partnerId?: string;
   role?: string;
   email?: string;
@@ -488,6 +489,38 @@ export async function POST(request: Request) {
         )
         .run();
       await audit(db, "Movimiento registrado", `${type}: ${concept}.`, projectId);
+      break;
+    }
+    case "update-movement": {
+      const movementId = textValue(payload.movementId);
+      const projectId = textValue(payload.projectId);
+      const concept = textValue(payload.concept);
+      const amount = numericValue(payload.amount);
+
+      if (!movementId || !projectId || !concept || amount <= 0) {
+        return jsonError("Movimiento, proyecto, concepto y valor positivo son obligatorios.");
+      }
+
+      const type = textValue(payload.type, "Gasto");
+      await db
+        .prepare(
+          `UPDATE movements
+          SET project_id = ?, type = ?, category = ?, concept = ?, amount = ?, movement_date = ?, status = ?, partner_id = ?
+          WHERE id = ?`,
+        )
+        .bind(
+          projectId,
+          type,
+          textValue(payload.category, "Operacion"),
+          concept,
+          amount,
+          textValue(payload.movementDate, new Date().toISOString().slice(0, 10)),
+          textValue(payload.status, "Registrado"),
+          textValue(payload.partnerId) || null,
+          movementId,
+        )
+        .run();
+      await audit(db, "Movimiento actualizado", `${type}: ${concept}.`, projectId);
       break;
     }
     case "create-partner": {

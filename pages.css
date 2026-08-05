@@ -781,6 +781,149 @@ nav button:hover {
   font-size: 13px;
 }
 
+.projection-panel {
+  border-left: 5px solid var(--blue);
+}
+
+.projection-metrics {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(140px, 1fr));
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfb;
+  overflow: hidden;
+}
+
+.projection-metrics.compact {
+  grid-template-columns: repeat(4, minmax(130px, 1fr));
+}
+
+.projection-metric {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  border-right: 1px solid var(--line);
+  padding: 13px 14px;
+}
+
+.projection-metric:last-child {
+  border-right: 0;
+}
+
+.projection-metric span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.projection-metric strong {
+  color: var(--ink);
+  font-size: 22px;
+  line-height: 1;
+  overflow-wrap: anywhere;
+}
+
+.projection-metric small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.projection-metric.warning strong,
+.projection-metric.warning small {
+  color: #74510c;
+}
+
+.projection-metric.danger strong,
+.projection-metric.danger small {
+  color: #8b2e1d;
+}
+
+.projection-metric.good strong,
+.projection-metric.good small {
+  color: #16564f;
+}
+
+.projection-layout {
+  display: grid;
+  grid-template-columns: minmax(420px, 1.35fr) minmax(260px, 0.65fr);
+  gap: 14px;
+  align-items: stretch;
+}
+
+.projection-plane {
+  min-height: 300px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background:
+    linear-gradient(#eef3f0 1px, transparent 1px) 0 0 / 100% 25%,
+    linear-gradient(90deg, #eef3f0 1px, transparent 1px) 0 0 / 16.6% 100%,
+    #fbfcfb;
+  overflow: hidden;
+}
+
+.projection-plane svg {
+  display: block;
+  width: 100%;
+  min-height: 300px;
+}
+
+.projection-plane .empty-state {
+  display: grid;
+  min-height: 300px;
+  place-items: center;
+  color: var(--muted);
+  font-weight: 800;
+  padding: 20px;
+  text-align: center;
+}
+
+.projection-insights {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+}
+
+.projection-insights div {
+  display: grid;
+  gap: 5px;
+  border-left: 4px solid var(--teal);
+  border-radius: 8px;
+  background: #f8fcfa;
+  padding: 12px 13px;
+}
+
+.projection-insights div.warning {
+  border-left-color: var(--gold);
+  background: var(--amber-soft);
+}
+
+.projection-insights div.danger {
+  border-left-color: var(--coral);
+  background: var(--red-soft);
+}
+
+.projection-insights strong {
+  color: var(--ink);
+}
+
+.projection-insights span,
+.flow-guide {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.flow-guide {
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--teal);
+  border-radius: 8px;
+  background: #f8fcfa;
+  font-weight: 700;
+  padding: 10px 12px;
+}
+
 .candle-chart {
   min-height: 260px;
   border: 1px solid var(--line);
@@ -911,20 +1054,24 @@ nav button:hover {
   background: rgba(255, 251, 238, 0.94);
 }
 
-.admin-area.is-locked .admin-summary,
-.admin-area.is-locked .grid {
-  opacity: 0.72;
-}
-
-.admin-area.is-locked input,
-.admin-area.is-locked select,
-.admin-area.is-locked textarea,
-.admin-area.is-locked button {
-  pointer-events: none;
-}
-
 .admin-summary {
   grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.admin-workspace {
+  display: grid;
+  grid-template-columns: minmax(360px, 0.75fr) minmax(560px, 1.25fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.admin-form-panel,
+.admin-records-panel {
+  min-width: 0;
+}
+
+.admin-records-panel .table-wrap {
+  min-height: 360px;
 }
 
 .compact-metrics .metrics article,
@@ -1175,6 +1322,10 @@ nav button:hover {
   font-size: 16px;
 }
 
+.report-projection {
+  border-left: 4px solid var(--blue);
+}
+
 .report-chart-block .pie-chart {
   width: min(180px, 100%);
 }
@@ -1212,6 +1363,8 @@ nav button:hover {
   .metrics,
   .ops-strip,
   .grid,
+  .admin-workspace,
+  .projection-layout,
   .toolbar,
   .settings-grid,
   .report-pies,
@@ -1237,6 +1390,20 @@ nav button:hover {
 
   .plan-board {
     grid-template-columns: 1fr;
+  }
+
+  .projection-metrics,
+  .projection-metrics.compact {
+    grid-template-columns: 1fr;
+  }
+
+  .projection-metric {
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .projection-metric:last-child {
+    border-bottom: 0;
   }
 
   .bar-chart div {

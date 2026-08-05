@@ -117,6 +117,11 @@ function handlePayload_(payload) {
     return { ok: true, user: user, data: loadData_() };
   }
 
+  if (action === "merge-local-data") {
+    mergeLocalData_(payload);
+    return { ok: true, user: user, data: loadData_() };
+  }
+
   if (action === "create-project") {
     createProject_(payload);
     return { ok: true, user: user, data: loadData_() };
@@ -124,6 +129,11 @@ function handlePayload_(payload) {
 
   if (action === "create-movement") {
     createMovement_(payload);
+    return { ok: true, user: user, data: loadData_() };
+  }
+
+  if (action === "update-movement") {
+    updateMovement_(payload);
     return { ok: true, user: user, data: loadData_() };
   }
 
@@ -327,6 +337,30 @@ function createMovement_(payload) {
   audit_("Movimiento registrado", type + ": " + concept + ".", projectId);
 }
 
+function updateMovement_(payload) {
+  var movementId = text_(payload.movementId);
+  var projectId = text_(payload.projectId);
+  var concept = text_(payload.concept);
+  var amount = number_(payload.amount);
+
+  if (!movementId || !projectId || !concept || amount <= 0) {
+    throw new Error("Movimiento, proyecto, concepto y valor positivo son obligatorios.");
+  }
+
+  var type = text_(payload.type, "Gasto");
+  updateObjectById_("Movements", movementId, {
+    projectId: projectId,
+    type: type,
+    category: text_(payload.category, "Operacion"),
+    concept: concept,
+    amount: amount,
+    movementDate: text_(payload.movementDate, today_()),
+    status: text_(payload.status, "Registrado"),
+    partnerId: text_(payload.partnerId),
+  });
+  audit_("Movimiento actualizado", type + ": " + concept + ".", projectId);
+}
+
 function createPartner_(payload) {
   var projectId = text_(payload.projectId);
   var name = text_(payload.name);
@@ -499,6 +533,97 @@ function deleteUser_(payload) {
 
   deleteObjectById_("Users", userId);
   audit_("Usuario eliminado", userId + " fue eliminado.", "");
+}
+
+function mergeLocalData_(payload) {
+  var data = payload.data || {};
+
+  upsertObjects_("Projects", data.projects, function (row) {
+    return {
+      id: text_(row.id),
+      name: text_(row.name),
+      type: text_(row.type, "Proyecto personalizado"),
+      country: text_(row.country, CONFIG.COUNTRY),
+      currency: text_(row.currency, CONFIG.CURRENCY),
+      timezone: text_(row.timezone, CONFIG.TIMEZONE),
+      status: text_(row.status, "En revision"),
+      budget: number_(row.budget),
+      objective: text_(row.objective, "Proyecto creado desde ProN."),
+      createdAt: text_(row.createdAt, today_()),
+      updatedAt: text_(row.updatedAt, today_()),
+    };
+  });
+
+  upsertObjects_("Movements", data.movements, function (row) {
+    return {
+      id: text_(row.id),
+      projectId: text_(row.projectId),
+      type: text_(row.type, "Gasto"),
+      category: text_(row.category, "Operacion"),
+      concept: text_(row.concept),
+      amount: number_(row.amount),
+      movementDate: text_(row.movementDate, today_()),
+      status: text_(row.status, "Registrado"),
+      createdAt: text_(row.createdAt, today_()),
+      partnerId: text_(row.partnerId),
+    };
+  });
+
+  upsertObjects_("Partners", data.partners, function (row) {
+    return {
+      id: text_(row.id),
+      projectId: text_(row.projectId),
+      name: text_(row.name),
+      type: text_(row.type, "Socio"),
+      contribution: number_(row.contribution),
+      participation: number_(row.participation),
+      status: text_(row.status, "Activo"),
+    };
+  });
+
+  upsertObjects_("Inventory", data.inventory, function (row) {
+    return {
+      id: text_(row.id),
+      projectId: text_(row.projectId),
+      item: text_(row.item),
+      category: text_(row.category, "Inventario"),
+      quantity: number_(row.quantity),
+      unitCost: number_(row.unitCost),
+      status: text_(row.status, "Disponible"),
+    };
+  });
+
+  upsertObjects_("Users", data.users, function (row) {
+    if (text_(row.id) === "usr-owner") {
+      return null;
+    }
+
+    return {
+      id: text_(row.id),
+      name: text_(row.name),
+      role: text_(row.role, "Invitado"),
+      status: text_(row.status, "Activo"),
+      emailHash: text_(row.emailHash || row.loginHash),
+      projectId: text_(row.projectId),
+      createdAt: text_(row.createdAt, today_()),
+      username: text_(row.username),
+      loginHash: text_(row.loginHash || row.emailHash),
+      passwordHash: text_(row.passwordHash),
+    };
+  });
+
+  upsertObjects_("Audit", data.audit, function (row) {
+    return {
+      id: text_(row.id),
+      action: text_(row.action, "Registro"),
+      detail: text_(row.detail),
+      actorRole: text_(row.actorRole, "Superadministrador"),
+      projectId: text_(row.projectId),
+      createdAt: text_(row.createdAt, today_()),
+    };
+  });
+
+  audit_("Datos compartidos", "Se subieron registros locales al respaldo central.", "");
 }
 
 function loadData_() {
@@ -734,6 +859,39 @@ function appendObject_(sheetName, object) {
     return object[header] !== undefined ? object[header] : "";
   });
   sheet_(sheetName).appendRow(row);
+}
+
+function upsertObjects_(sheetName, rows, mapper) {
+  if (!Array.isArray(rows)) {
+    return;
+  }
+
+  rows.forEach(function (row) {
+    var object = mapper(row || {});
+    var id = text_(object && object.id);
+
+    if (!object || !id) {
+      return;
+    }
+
+    if (objectById_(sheetName, id)) {
+      updateObjectById_(sheetName, id, object);
+    } else {
+      appendObject_(sheetName, object);
+    }
+  });
+}
+
+function objectById_(sheetName, id) {
+  var rows = readObjects_(sheetName);
+
+  for (var index = 0; index < rows.length; index += 1) {
+    if (String(rows[index].id) === String(id)) {
+      return rows[index];
+    }
+  }
+
+  return null;
 }
 
 function updateObjectById_(sheetName, id, patch) {

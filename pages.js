@@ -129,6 +129,7 @@ const state = {
   busy: false,
   backend: "checking",
   loginSyncId: 0,
+  loginCredentials: null,
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -458,14 +459,14 @@ function setTextIfExists(selector, value) {
 function updateConnection(label, tone = "checking") {
   const badge = document.querySelector("#connectionBadge");
   if (badge) {
-    badge.textContent = tone === "error" || tone === "local" ? "Sistema activo" : label;
-    badge.className = `connection-badge ${tone === "error" || tone === "local" ? "ok" : tone}`;
+    badge.textContent = tone === "local" ? "Datos de este navegador" : tone === "error" ? "Sin respaldo central" : label;
+    badge.className = `connection-badge ${tone}`;
   }
 
   const pill = document.querySelector("#syncPill");
   if (pill) {
-    pill.textContent = "Activo";
-    pill.className = "pill";
+    pill.textContent = tone === "local" ? "Equipo" : "Activo";
+    pill.className = `pill ${tone === "local" ? "warning" : ""}`;
   }
 }
 
@@ -473,8 +474,7 @@ function setBusy(isBusy) {
   state.busy = isBusy;
   $$("button").forEach((button) => {
     if (!["logoutButton", "topLogoutButton"].includes(button.id)) {
-      const lockedAdmin = button.closest("#administrationArea.is-locked");
-      button.disabled = isBusy || Boolean(lockedAdmin);
+      button.disabled = isBusy;
     }
   });
 }
@@ -568,7 +568,10 @@ function showDashboard() {
   $("#dashboard").classList.remove("is-hidden");
   $("#sessionName").textContent = state.user?.name || "Administrador General";
   $("#sessionRole").textContent = state.user?.role || "Superadministrador";
-  updateConnection("Sistema activo", "ok");
+  updateConnection(
+    isLocalSession() ? "Datos de este navegador" : "Sistema activo",
+    isLocalSession() ? "local" : "ok",
+  );
   render();
 }
 
@@ -615,7 +618,10 @@ function enterDashboardNow(session) {
   $("#rememberInput").checked = true;
   showDashboard();
   setMessage("Panel listo.");
-  updateConnection("Sistema activo", "ok");
+  updateConnection(
+    isLocalSession() ? "Datos de este navegador" : "Sistema activo",
+    isLocalSession() ? "local" : "ok",
+  );
 }
 
 function localUserByCredentials(loginHash, passwordHash) {
@@ -636,6 +642,8 @@ function userLoginExists(loginHash) {
 
 function syncLoginInBackground(credentials, syncId) {
   window.setTimeout(async () => {
+    const localSnapshot = normalizeData(cloneData(state.data));
+
     try {
       const result = await callBackend(
         "login",
@@ -664,7 +672,7 @@ function syncLoginInBackground(credentials, syncId) {
 
       const currentProjectId = state.selectedProjectId;
       state.user = dataResult.user || state.user;
-      const remoteData = normalizeRemoteData(dataResult.data);
+      let remoteData = normalizeRemoteData(dataResult.data);
       if (!remoteData) {
         state.backend = "ready";
         saveLocalData();
@@ -673,6 +681,7 @@ function syncLoginInBackground(credentials, syncId) {
         return;
       }
 
+      remoteData = await mergeLocalSnapshotIfNeeded(localSnapshot, remoteData);
       state.data = remoteData;
       state.selectedProjectId = state.data.projects.some((project) => project.id === currentProjectId)
         ? currentProjectId
@@ -684,7 +693,7 @@ function syncLoginInBackground(credentials, syncId) {
     } catch {
       if (syncId === state.loginSyncId) {
         state.backend = "retry";
-        updateConnection("Sistema activo", "ok");
+        updateConnection("Datos de este navegador", "local");
       }
     }
   }, BACKGROUND_SYNC_DELAY_MS);
@@ -705,16 +714,17 @@ async function login(event) {
     ownerPasswordHash === SUPERADMIN_PASSWORD_SHA256
   ) {
     setLoginMessage("Clave correcta. Entrando...");
-    state.loginSyncId += 1;
-    const syncId = state.loginSyncId;
-    enterDashboardNow(ownerSession(loginHash));
-    setBusy(false);
-    syncLoginInBackground({
+    state.loginCredentials = {
       emailHash: loginHash,
       loginHash,
       passwordHash: ownerPasswordHash,
       remember,
-    }, syncId);
+    };
+    state.loginSyncId += 1;
+    const syncId = state.loginSyncId;
+    enterDashboardNow(ownerSession(loginHash));
+    setBusy(false);
+    syncLoginInBackground(state.loginCredentials, syncId);
     return;
   }
 
@@ -759,9 +769,50 @@ async function login(event) {
 
 async function refreshData() {
   if (isLocalSession()) {
-    setMessage("Informacion actualizada.");
-    updateConnection("Sistema activo", "ok");
-    render();
+    if (!state.loginCredentials) {
+      setMessage(
+        "Estos datos estan guardados en este navegador. Para verlos en otro equipo, entra de nuevo y pulsa Actualizar cuando el sistema central este disponible.",
+        "warning",
+      );
+      updateConnection("Datos de este navegador", "local");
+      render();
+      return;
+    }
+
+    const localSnapshot = normalizeData(cloneData(state.data));
+    setBusy(true);
+    setMessage("Guardando datos para que se vean tambien al abrir el link en otro lado...");
+    updateConnection("Actualizando", "checking");
+
+    try {
+      const loginResult = await callBackend("login", state.loginCredentials, false);
+      state.token = loginResult.token;
+      state.user = loginResult.user || state.user;
+      sessionStorage.setItem(TOKEN_KEY, state.token);
+      sessionStorage.setItem(SESSION_USER_KEY, JSON.stringify(state.user));
+
+      const dataResult = await callBackend("get-data");
+      let remoteData = normalizeRemoteData(dataResult.data);
+      remoteData = await mergeLocalSnapshotIfNeeded(localSnapshot, remoteData);
+
+      if (remoteData) {
+        state.data = remoteData;
+        saveLocalData();
+      }
+
+      state.backend = "ready";
+      setMessage("Datos guardados para compartirlos desde el link.");
+      updateConnection("Sistema activo", "ok");
+      render();
+    } catch {
+      setMessage(
+        "No se pudo guardar en el respaldo central todavia. Tus datos siguen aqui en este navegador.",
+        "warning",
+      );
+      updateConnection("Datos de este navegador", "local");
+    } finally {
+      setBusy(false);
+    }
     return;
   }
 
@@ -846,8 +897,11 @@ async function submitAction(action, payload, successMessage) {
     setBusy(true);
     applyLocalAction(action, payload);
     saveLocalData();
-    setMessage(successMessage);
-    updateConnection("Sistema activo", "ok");
+    setMessage(
+      `${successMessage} Quedo guardado en este navegador; pulsa Actualizar para compartirlo desde el link cuando el sistema central responda.`,
+      "warning",
+    );
+    updateConnection("Datos de este navegador", "local");
     render();
     setBusy(false);
     return;
@@ -884,8 +938,11 @@ async function submitAction(action, payload, successMessage) {
     }
     applyLocalAction(action, payload);
     saveLocalData();
-    setMessage(successMessage);
-    updateConnection("Sistema activo", "ok");
+    setMessage(
+      `${successMessage} Quedo guardado en este navegador; pulsa Actualizar para compartirlo desde el link cuando el sistema central responda.`,
+      "warning",
+    );
+    updateConnection("Datos de este navegador", "local");
     render();
   } finally {
     setBusy(false);
@@ -978,6 +1035,32 @@ function applyLocalAction(action, payload) {
       "Movimiento registrado",
       `${payload.type || "Gasto"}: ${payload.concept}.`,
       payload.projectId,
+    );
+    return;
+  }
+
+  if (action === "update-movement") {
+    const movementId = payload.movementId;
+    const previous = state.data.movements.find((item) => item.id === movementId);
+    state.data.movements = state.data.movements.map((movement) =>
+      movement.id === movementId
+        ? {
+            ...movement,
+            projectId: payload.projectId || movement.projectId,
+            type: payload.type || movement.type,
+            category: payload.category || movement.category,
+            concept: payload.concept || movement.concept,
+            amount: numberValue(payload.amount),
+            movementDate: payload.movementDate || movement.movementDate,
+            partnerId: payload.partnerId || "",
+            status: payload.status || movement.status || "Registrado",
+          }
+        : movement,
+    );
+    addAudit(
+      "Movimiento actualizado",
+      `${payload.type || previous?.type || "Movimiento"}: ${payload.concept || previous?.concept || ""}.`,
+      payload.projectId || previous?.projectId,
     );
     return;
   }
@@ -1106,6 +1189,52 @@ function isCleanStartData(data) {
 
 function normalizeRemoteData(data) {
   return isCleanStartData(data) ? normalizeData(data) : null;
+}
+
+const SHARED_DATA_COLLECTIONS = ["projects", "movements", "partners", "inventory", "users", "audit"];
+
+function collectionKey(row) {
+  return String(row?.id || "");
+}
+
+function sharedRows(data, collection) {
+  const rows = Array.isArray(data?.[collection]) ? data[collection] : [];
+
+  if (collection === "users") {
+    return rows.filter((row) => row.id !== "usr-owner");
+  }
+
+  return rows;
+}
+
+function countSharedRows(data) {
+  return SHARED_DATA_COLLECTIONS.reduce(
+    (sum, collection) => sum + sharedRows(data, collection).length,
+    0,
+  );
+}
+
+function hasLocalRowsMissing(localData, remoteData) {
+  return SHARED_DATA_COLLECTIONS.some((collection) => {
+    const remoteIds = new Set(sharedRows(remoteData, collection).map(collectionKey));
+    return sharedRows(localData, collection).some((row) => {
+      const id = collectionKey(row);
+      return id && !remoteIds.has(id);
+    });
+  });
+}
+
+function hasBusinessData(data = state.data) {
+  return countSharedRows(data) > 0;
+}
+
+async function mergeLocalSnapshotIfNeeded(localSnapshot, remoteData) {
+  if (!remoteData || !hasBusinessData(localSnapshot) || !hasLocalRowsMissing(localSnapshot, remoteData)) {
+    return remoteData;
+  }
+
+  const result = await callBackend("merge-local-data", { data: localSnapshot });
+  return normalizeRemoteData(result.data) || remoteData;
 }
 
 function filteredProjects() {
@@ -1528,7 +1657,7 @@ function renderCandleChart(selector, movements) {
   const rows = groupMovementsByDate(movements).slice(-10);
 
   if (!rows.length) {
-    container.replaceChildren(el("div", { class: "empty-state", text: "Sin datos para graficar." }));
+    container.replaceChildren(el("div", { class: "empty-state", text: "Sin movimientos por fecha para graficar." }));
     return;
   }
 
@@ -1621,7 +1750,7 @@ function renderCandleChart(selector, movements) {
   const svg = svgNode("svg", {
     viewBox: `0 0 ${width} ${height}`,
     role: "img",
-    "aria-label": "Velas de flujo financiero",
+    "aria-label": "Plano de flujo financiero por fecha",
   }, [
     ...grid,
     svgNode("line", {
@@ -1636,6 +1765,294 @@ function renderCandleChart(selector, movements) {
   ]);
 
   container.replaceChildren(svg);
+}
+
+function projectionSummary(projectId = summaryProjectId()) {
+  const scope = reportScope(projectId);
+  const analyses = scope.projects.map((project) => projectReportAnalysis(project, scope));
+  const capital = scope.current.income + scope.current.investment;
+  const budgetGap = analyses.length
+    ? analyses.reduce((sum, analysis) => sum + analysis.budgetGap, 0)
+    : Math.max(0, scope.current.budget - capital);
+  const operatingGap = analyses.reduce((sum, analysis) => sum + analysis.operatingGap, 0);
+  const projectedIncome30 = analyses.reduce((sum, analysis) => sum + analysis.projectedIncome30, 0);
+  const projectedExpenses30 = analyses.reduce((sum, analysis) => sum + analysis.projectedExpenses30, 0);
+  const projectedBalance30 = scope.current.balance + projectedIncome30 - projectedExpenses30;
+  const monthlyNet = projectedIncome30 - projectedExpenses30;
+  const monthsToCoverBudget = monthlyNet > 0 && budgetGap > 0
+    ? Math.ceil(budgetGap / monthlyNet)
+    : 0;
+  const completion = analyses.length
+    ? Math.round(analyses.reduce((sum, analysis) => sum + analysis.completion, 0) / analyses.length)
+    : 0;
+  const range = movementRange(scope.movements);
+  const budgetProgress = scope.current.budget
+    ? Math.min(100, (capital / scope.current.budget) * 100)
+    : 0;
+  const spendProgress = scope.current.budget
+    ? Math.min(100, (scope.current.expenses / scope.current.budget) * 100)
+    : 0;
+
+  return {
+    scope,
+    analyses,
+    capital,
+    budgetGap,
+    operatingGap,
+    projectedIncome30,
+    projectedExpenses30,
+    projectedBalance30,
+    monthlyNet,
+    monthsToCoverBudget,
+    completion,
+    range,
+    budgetProgress,
+    spendProgress,
+    dataShared: state.backend === "ready" && !isLocalSession(),
+  };
+}
+
+function projectionMetric(label, value, note, tone = "") {
+  return el("div", { class: `projection-metric ${tone}`.trim() }, [
+    el("span", { text: label }),
+    el("strong", { text: value }),
+    el("small", { text: note }),
+  ]);
+}
+
+function renderProjectionMetrics(selector, summary) {
+  replaceChildren(selector, [
+    projectionMetric(
+      "Capital real",
+      money(summary.capital),
+      `${percentLabel(summary.budgetProgress)} del presupuesto`,
+      summary.budgetProgress >= 100 ? "good" : "warning",
+    ),
+    projectionMetric(
+      "Brecha",
+      money(summary.budgetGap),
+      summary.budgetGap > 0 ? "falta para cubrir presupuesto" : "presupuesto cubierto",
+      summary.budgetGap > 0 ? "danger" : "good",
+    ),
+    projectionMetric(
+      "Balance hoy",
+      money(summary.scope.current.balance),
+      `gasto usado ${percentLabel(summary.spendProgress)}`,
+      summary.scope.current.balance < 0 ? "danger" : "good",
+    ),
+    projectionMetric(
+      "Proy. 30 dias",
+      money(summary.projectedBalance30),
+      `entra ${money(summary.projectedIncome30)} / sale ${money(summary.projectedExpenses30)}`,
+      summary.projectedBalance30 < 0 ? "danger" : "good",
+    ),
+    projectionMetric(
+      "Expediente",
+      `${summary.completion}%`,
+      summary.range.days ? `${summary.range.days} dias de historial` : "sin historial financiero",
+      summary.completion >= 80 ? "good" : "warning",
+    ),
+  ]);
+}
+
+function projectionInsightNodes(summary) {
+  const nodes = [];
+
+  if (!summary.scope.projects.length) {
+    nodes.push(
+      el("div", { class: "warning" }, [
+        el("strong", { text: "Sin proyecto registrado" }),
+        el("span", { text: "Crea un proyecto real para que ProN calcule presupuesto, capital, brecha y proyeccion." }),
+      ]),
+    );
+    return nodes;
+  }
+
+  nodes.push(
+    el("div", { class: summary.budgetGap > 0 ? "danger" : "" }, [
+      el("strong", {
+        text: summary.budgetGap > 0 ? "Capital por completar" : "Capital cubierto",
+      }),
+      el("span", {
+        text: summary.budgetGap > 0
+          ? `Falta ${money(summary.budgetGap)} para igualar capital real contra presupuesto.`
+          : "El capital real ya cubre el presupuesto registrado.",
+      }),
+    ]),
+  );
+
+  nodes.push(
+    el("div", { class: summary.projectedBalance30 < 0 ? "danger" : "" }, [
+      el("strong", { text: "Tendencia a 30 dias" }),
+      el("span", {
+        text: summary.range.days
+          ? `Con el historial cargado, el balance estimado cerraria en ${money(summary.projectedBalance30)}.`
+          : "Registra fechas de ingresos, inversiones y gastos para activar una proyeccion real.",
+      }),
+    ]),
+  );
+
+  if (summary.monthsToCoverBudget > 0) {
+    nodes.push(
+      el("div", {}, [
+        el("strong", { text: "Tiempo estimado" }),
+        el("span", {
+          text: `A este ritmo faltarian cerca de ${summary.monthsToCoverBudget} meses para cubrir la brecha del presupuesto.`,
+        }),
+      ]),
+    );
+  }
+
+  const firstMissing = summary.analyses
+    .flatMap((analysis) => analysis.missing.map((item) => `${analysis.project.name}: ${item}`))
+    .slice(0, 1)[0];
+  if (firstMissing) {
+    nodes.push(
+      el("div", { class: "warning" }, [
+        el("strong", { text: "Falta por completar" }),
+        el("span", { text: firstMissing }),
+      ]),
+    );
+  }
+
+  nodes.push(
+    el("div", { class: summary.dataShared ? "" : "warning" }, [
+      el("strong", { text: summary.dataShared ? "Datos compartidos" : "Datos solo aqui" }),
+      el("span", {
+        text: summary.dataShared
+          ? "Lo registrado esta en el respaldo central y se vera al abrir el link en otro navegador."
+          : "Lo registrado vive en este navegador hasta que Actualizar logre guardarlo en el respaldo central.",
+      }),
+    ]),
+  );
+
+  return nodes;
+}
+
+function renderProjectionPlane(selector, summary) {
+  const container = $(selector);
+
+  if (!summary.scope.projects.length) {
+    container.replaceChildren(el("div", { class: "empty-state", text: "Crea un proyecto para ver el plano financiero." }));
+    return;
+  }
+
+  const width = 960;
+  const height = 300;
+  const padding = { top: 42, right: 38, bottom: 54, left: 74 };
+  const points = [
+    { label: "Presupuesto", value: summary.scope.current.budget, color: "#0f766e" },
+    { label: "Capital real", value: summary.capital, color: "#315f9f" },
+    { label: "Gastos", value: summary.scope.current.expenses, color: "#d95f43" },
+    { label: "Balance hoy", value: summary.scope.current.balance, color: summary.scope.current.balance < 0 ? "#d95f43" : "#10201d" },
+    { label: "Proy. 30 dias", value: summary.projectedBalance30, color: summary.projectedBalance30 < 0 ? "#d95f43" : "#0f766e" },
+    { label: "Brecha", value: summary.budgetGap, color: summary.budgetGap > 0 ? "#f2b84b" : "#0f766e" },
+  ];
+  const values = points.map((point) => point.value);
+  const high = Math.max(1, ...values, summary.scope.current.budget);
+  const low = Math.min(0, ...values);
+  const range = Math.max(1, high - low);
+  const yScale = (value) =>
+    padding.top + ((high - value) / range) * (height - padding.top - padding.bottom);
+  const xStep = (width - padding.left - padding.right) / (points.length - 1);
+  const positioned = points.map((point, index) => ({
+    ...point,
+    x: padding.left + xStep * index,
+    y: yScale(point.value),
+  }));
+  const path = positioned.map((point, index) => `${index ? "L" : "M"} ${point.x} ${point.y}`).join(" ");
+  const zeroY = yScale(0);
+  const budgetY = yScale(summary.scope.current.budget);
+
+  const svg = svgNode("svg", {
+    viewBox: `0 0 ${width} ${height}`,
+    role: "img",
+    "aria-label": "Plano de proyeccion financiera del proyecto",
+  }, [
+    svgNode("line", {
+      x1: padding.left,
+      x2: width - padding.right,
+      y1: zeroY,
+      y2: zeroY,
+      stroke: "#10201d",
+      "stroke-width": "1.2",
+    }),
+    svgNode("line", {
+      x1: padding.left,
+      x2: width - padding.right,
+      y1: budgetY,
+      y2: budgetY,
+      stroke: "#0f766e",
+      "stroke-width": "1",
+      "stroke-dasharray": "6 7",
+    }),
+    svgNode("text", {
+      x: padding.left,
+      y: Math.max(16, budgetY - 8),
+      fill: "#0f766e",
+      "font-size": "12",
+      "font-weight": "800",
+    }, [document.createTextNode("linea de presupuesto")]),
+    svgNode("path", {
+      d: path,
+      fill: "none",
+      stroke: "#315f9f",
+      "stroke-width": "3",
+      "stroke-linecap": "round",
+      "stroke-linejoin": "round",
+    }),
+    ...positioned.flatMap((point) => [
+      svgNode("circle", {
+        cx: point.x,
+        cy: point.y,
+        r: "8",
+        fill: point.color,
+        stroke: "#ffffff",
+        "stroke-width": "3",
+      }),
+      svgNode("text", {
+        x: point.x,
+        y: height - 22,
+        "text-anchor": "middle",
+        fill: "#65736f",
+        "font-size": "12",
+        "font-weight": "800",
+      }, [document.createTextNode(point.label)]),
+      svgNode("text", {
+        x: point.x,
+        y: Math.max(18, point.y - 14),
+        "text-anchor": "middle",
+        fill: point.color,
+        "font-size": "12",
+        "font-weight": "900",
+      }, [document.createTextNode(money(point.value).replace(",00", ""))]),
+    ]),
+  ]);
+
+  container.replaceChildren(svg);
+}
+
+function renderProjectionDashboard(targets, projectId = summaryProjectId()) {
+  const summary = projectionSummary(projectId);
+  renderProjectionMetrics(targets.metrics, summary);
+  renderProjectionPlane(targets.plane, summary);
+  replaceChildren(targets.insights, projectionInsightNodes(summary));
+  if (targets.pill) {
+    setTextIfExists(targets.pill, summary.scope.label);
+  }
+  return summary;
+}
+
+function renderFlowGuide(selector, movements) {
+  const node = $(selector);
+  if (!node) {
+    return;
+  }
+
+  const range = movementRange(movements);
+  node.textContent = range.days
+    ? "Verde significa entrada de dinero, rojo salida o gasto, y el numero sobre cada fecha es el balance neto de ese dia. El plano de proyeccion de arriba usa ese historial para estimar tendencia a 30 dias."
+    : "Cuando registres movimientos con fecha, este plano mostrara entradas, salidas y balance neto por dia.";
 }
 
 function renderSummary() {
@@ -1659,6 +2076,13 @@ function renderSummary() {
   renderPie("#budgetPie", budgetItems);
   renderLegend("#budgetLegend", budgetItems);
   renderCandleChart("#cashflowCandles", movements);
+  renderProjectionDashboard({
+    metrics: "#projectionMetrics",
+    plane: "#projectionPlane",
+    insights: "#projectionInsights",
+    pill: "#projectionScopePill",
+  });
+  renderFlowGuide("#cashflowGuide", movements);
 
   replaceChildren(
     "#planBoard",
@@ -2023,6 +2447,12 @@ function renderReports() {
   renderPie("#reportBudgetPie", budgetItems);
   renderLegend("#reportBudgetLegend", budgetItems);
   renderCandleChart("#reportCandles", movements);
+  renderProjectionDashboard({
+    metrics: "#reportProjectionMetrics",
+    plane: "#reportProjectionPlane",
+    insights: "#reportProjectionInsights",
+  });
+  renderFlowGuide("#reportFlowGuide", movements);
   replaceChildren(
     "#chartBars",
     projects.map((project) => {
@@ -2115,8 +2545,47 @@ function renderProjectStatusPanel(project) {
     "#adminGateMessage",
     ready
       ? "Administracion disponible para pagos, gastos operativos, cobros y cuentas por pagar."
-      : "Cuando el proyecto este aprobado, con inversion completada, como negocio activo o en funcion, se habilita la administracion.",
+      : "Ya puedes registrar pagos, gastos y cobros. Cambia el estado a Aprobado, Negocio activo o En funcion cuando el negocio este listo para operar formalmente.",
   );
+}
+
+function clearAdminEditMode() {
+  const form = $("#detailAdminForm");
+  if (!form) {
+    return;
+  }
+
+  form.reset();
+  form.elements.movementId.value = "";
+  form.elements.movementDate.value = today();
+  form.elements.status.value = "Pagado";
+  setTextIfExists("#detailAdminSubmitButton", "Guardar administracion");
+  $("#detailAdminCancelButton").hidden = true;
+  renderCategorySelects();
+  renderPartnerSelects();
+}
+
+function editAdminMovement(movementId) {
+  const movement = state.data.movements.find((item) => item.id === movementId);
+  const form = $("#detailAdminForm");
+
+  if (!movement || !form) {
+    return;
+  }
+
+  form.elements.movementId.value = movement.id;
+  form.elements.type.value = movement.type || "Gasto";
+  renderCategorySelects();
+  renderPartnerSelects();
+  form.elements.category.value = movement.category || "Operacion";
+  form.elements.partnerId.value = movement.partnerId || "";
+  form.elements.concept.value = movement.concept || "";
+  form.elements.amount.value = numberValue(movement.amount) || "";
+  form.elements.movementDate.value = movement.movementDate || today();
+  form.elements.status.value = movement.status || "Pagado";
+  setTextIfExists("#detailAdminSubmitButton", "Actualizar registro");
+  $("#detailAdminCancelButton").hidden = false;
+  form.scrollIntoView({ block: "center", behavior: "smooth" });
 }
 
 function renderAdministration(project, movements) {
@@ -2137,10 +2606,7 @@ function renderAdministration(project, movements) {
   setTextIfExists("#adminPendingTotal", money(current.pending));
   setTextIfExists("#adminIncomeTotal", money(current.income));
 
-  [...$("#detailAdminForm").elements].forEach((field) => {
-    field.disabled = !ready;
-  });
-  $("#adminPdfButton").disabled = !ready;
+  $("#adminPdfButton").disabled = false;
 
   replaceChildren(
     "#detailAdminBody",
@@ -2162,15 +2628,18 @@ function renderAdministration(project, movements) {
           el("div", { class: "row-actions" }, [
             el("button", {
               type: "button",
+              text: "Editar",
+              onclick: () => editAdminMovement(movement.id),
+            }),
+            el("button", {
+              type: "button",
               text: "PDF",
-              disabled: !ready,
               onclick: () => downloadMovementReceipt(movement.id),
             }),
             el("button", {
               type: "button",
               class: "danger",
               text: "Eliminar",
-              disabled: !ready,
               onclick: () =>
                 confirmDelete(
                   `Eliminar movimiento ${movement.concept}?`,
@@ -2208,7 +2677,14 @@ function renderProjectDetail() {
   setTextIfExists("#detailArchiveButton", projectStatus(project) === "Archivado" ? "Restaurar" : "Archivar");
   renderProjectStatusPanel(project);
   renderAdministration(project, movements);
+  renderProjectionDashboard({
+    metrics: "#detailProjectionMetrics",
+    plane: "#detailProjectionPlane",
+    insights: "#detailProjectionInsights",
+    pill: "#detailProjectionPill",
+  }, project.id);
   renderCandleChart("#detailCandles", movements);
+  renderFlowGuide("#detailFlowGuide", movements);
 
   replaceChildren(
     "#detailMovementsBody",
@@ -3208,9 +3684,15 @@ function buildExecutiveReportPage(projectId = summaryProjectId()) {
   const budgetItems = budgetReportItems(scope.projects);
   const adminTotals = administrationTotals(scope.movements);
   const analyses = scope.projects.map((project) => projectReportAnalysis(project, scope));
-  const activeProjects = scope.projects.filter((project) => project.status !== "Archivado").length;
+  const capital = scope.current.income + scope.current.investment;
   const budgetGapTotal = analyses.reduce((sum, analysis) => sum + analysis.budgetGap, 0);
   const operatingGapTotal = analyses.reduce((sum, analysis) => sum + analysis.operatingGap, 0);
+  const projectedIncome30 = analyses.reduce((sum, analysis) => sum + analysis.projectedIncome30, 0);
+  const projectedExpenses30 = analyses.reduce((sum, analysis) => sum + analysis.projectedExpenses30, 0);
+  const projectedBalance30 = scope.current.balance + projectedIncome30 - projectedExpenses30;
+  const completion = analyses.length
+    ? Math.round(analyses.reduce((sum, analysis) => sum + analysis.completion, 0) / analyses.length)
+    : 0;
   const cardWidth = 172;
   const cardHeight = 54;
   const gap = 12;
@@ -3218,14 +3700,15 @@ function buildExecutiveReportPage(projectId = summaryProjectId()) {
   const startY = 650;
   const cards = [
     ["Presupuesto", money(scope.current.budget), PIE_COLORS[0]],
-    ["Ingresos", money(scope.current.income), PIE_COLORS[1]],
-    ["Inversiones", money(scope.current.investment), PIE_COLORS[2]],
-    ["Gastos", money(scope.current.expenses), PIE_COLORS[3]],
+    ["Capital real", money(capital), PIE_COLORS[1]],
     ["Balance", money(scope.current.balance), "#10201d"],
     ["Brecha presup.", money(budgetGapTotal), "#d95f43"],
     ["Brecha oper.", money(operatingGapTotal), "#f2b84b"],
-    ["Proyectos", String(activeProjects), "#5b7f67"],
+    ["Proy. 30 dias", money(projectedBalance30), projectedBalance30 < 0 ? "#d95f43" : "#0f766e"],
+    ["Ingresos", money(scope.current.income), PIE_COLORS[1]],
+    ["Gastos", money(scope.current.expenses), PIE_COLORS[3]],
     ["Pendiente", money(adminTotals.pending), "#d95f43"],
+    ["Expediente", `${completion}%`, "#5b7f67"],
   ];
   const commands = [
     pdfRect(0, 0, 612, 792, { fill: "#f6f8f5", stroke: null }),
@@ -3251,22 +3734,22 @@ function buildExecutiveReportPage(projectId = summaryProjectId()) {
   });
 
   commands.push(pdfRect(36, 330, 252, 142, { fill: "#ffffff", stroke: "#dbe3df" }));
-  commands.push(pdfText("Pastel financiero", 52, 452, 11, "#10201d", true));
+  commands.push(pdfText("Distribucion financiera real", 52, 452, 11, "#10201d", true));
   drawPdfPie(commands, 106, 392, 46, financeItems);
   drawPdfLegend(commands, 166, 420, financeItems);
 
   commands.push(pdfRect(324, 330, 252, 142, { fill: "#ffffff", stroke: "#dbe3df" }));
-  commands.push(pdfText("Pastel de presupuesto", 340, 452, 11, "#10201d", true));
+  commands.push(pdfText("Presupuesto registrado", 340, 452, 11, "#10201d", true));
   drawPdfPie(commands, 394, 392, 46, budgetItems);
   drawPdfLegend(commands, 454, 420, budgetItems);
 
-  commands.push(pdfText("Velas de flujo por fecha", 36, 310, 12, "#10201d", true));
+  commands.push(pdfText("Plano de flujo y proyeccion", 36, 310, 12, "#10201d", true));
   drawPdfCandleChart(commands, 36, 142, 540, 150, scope.movements);
 
   commands.push(pdfText("Indicadores por proyecto", 36, 122, 12, "#10201d", true));
   commands.push(pdfRect(36, 42, 540, 70, { fill: "#ffffff", stroke: "#dbe3df" }));
   drawPdfBudgetBars(commands, 52, 52, 508, 48, scope.projects);
-  commands.push(pdfText("Pagina 1 - cuadros, pasteles, velas, indicadores y brechas", 36, 22, 8, "#65736f"));
+  commands.push(pdfText("Pagina 1 - cuadros, proyecciones, pasteles, flujo, indicadores y brechas", 36, 22, 8, "#65736f"));
 
   return commands.join("\n");
 }
@@ -3455,6 +3938,7 @@ function bindEvents() {
   $("#adminPdfButton").addEventListener("click", () => {
     downloadProjectReport(state.detailProjectId || state.selectedProjectId);
   });
+  $("#detailAdminCancelButton").addEventListener("click", clearAdminEditMode);
   $("#detailCsvButton").addEventListener("click", () => {
     const projectId = state.detailProjectId || state.selectedProjectId;
     downloadText(
@@ -3571,25 +4055,23 @@ function bindEvents() {
     event.preventDefault();
     const project = projectById(state.detailProjectId || state.selectedProjectId);
 
-    if (!project || !canAdministrate(project)) {
-      setMessage("Primero cambia el estado del proyecto a Aprobado, Negocio activo o En funcion.", "warning");
+    if (!project) {
+      setMessage("Abre o crea un proyecto para registrar administracion.", "warning");
       return;
     }
 
     const data = formData(event.currentTarget);
+    const isEditing = Boolean(data.movementId);
     submitAction(
-      "create-movement",
+      isEditing ? "update-movement" : "create-movement",
       {
         ...data,
         projectId: project.id,
         amount: numberValue(data.amount),
       },
-      "Registro administrativo guardado.",
+      isEditing ? "Registro administrativo actualizado." : "Registro administrativo guardado.",
     );
-    event.currentTarget.reset();
-    event.currentTarget.elements.movementDate.value = today();
-    event.currentTarget.elements.status.value = "Pagado";
-    renderCategorySelects();
+    clearAdminEditMode();
   });
 
   $("#partnerForm").addEventListener("submit", (event) => {

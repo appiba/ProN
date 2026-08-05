@@ -153,11 +153,26 @@
 
         <section class="view active" data-view="resumen">
           <div class="grid">
+            <article class="panel wide projection-panel">
+              <div class="panel-title">
+                <div>
+                  <p class="eyebrow">Proyeccion</p>
+                  <h3>Lectura financiera del proyecto</h3>
+                </div>
+                <span id="projectionScopePill" class="pill">Vista actual</span>
+              </div>
+              <div id="projectionMetrics" class="projection-metrics"></div>
+              <div class="projection-layout">
+                <div id="projectionPlane" class="projection-plane"></div>
+                <div id="projectionInsights" class="projection-insights"></div>
+              </div>
+            </article>
+
             <article class="panel">
               <div class="panel-title">
                 <div>
-                  <p class="eyebrow">Grafico</p>
-                  <h3>Distribucion financiera</h3>
+                  <p class="eyebrow">Soporte</p>
+                  <h3>Distribucion financiera real</h3>
                 </div>
               </div>
               <div id="financePie" class="pie-chart" aria-label="Grafico de pastel financiero"></div>
@@ -167,8 +182,8 @@
             <article class="panel">
               <div class="panel-title">
                 <div>
-                  <p class="eyebrow">Grafico</p>
-                  <h3>Presupuesto por proyecto</h3>
+                  <p class="eyebrow">Soporte</p>
+                  <h3>Presupuesto registrado</h3>
                 </div>
               </div>
               <div id="budgetPie" class="pie-chart" aria-label="Grafico de pastel por presupuesto"></div>
@@ -179,7 +194,7 @@
               <div class="panel-title">
                 <div>
                   <p class="eyebrow">Plan</p>
-                  <h3>Plan operativo de la vista</h3>
+                  <h3>Plan operativo y faltantes</h3>
                 </div>
                 <button id="downloadScopeButton" class="ghost-button" type="button">
                   Descargar PDF
@@ -192,10 +207,11 @@
               <div class="panel-title">
                 <div>
                   <p class="eyebrow">Plano</p>
-                  <h3>Velas de flujo por fecha</h3>
+                  <h3>Plano de flujo y proyeccion</h3>
                 </div>
               </div>
               <div id="cashflowCandles" class="candle-chart"></div>
+              <div id="cashflowGuide" class="flow-guide"></div>
             </article>
 
             <article class="panel wide">
@@ -441,21 +457,30 @@
                 </button>
               </div>
               <div class="report-dashboard">
+                <div class="report-chart-block report-projection">
+                  <h4>Proyeccion del informe</h4>
+                  <div id="reportProjectionMetrics" class="projection-metrics compact"></div>
+                  <div class="projection-layout">
+                    <div id="reportProjectionPlane" class="projection-plane"></div>
+                    <div id="reportProjectionInsights" class="projection-insights"></div>
+                  </div>
+                </div>
                 <div class="report-pies">
                   <div class="report-chart-block">
-                    <h4>Distribucion financiera</h4>
+                    <h4>Distribucion financiera real</h4>
                     <div id="reportFinancePie" class="pie-chart" aria-label="Pastel financiero del informe"></div>
                     <div id="reportFinanceLegend" class="legend-list"></div>
                   </div>
                   <div class="report-chart-block">
-                    <h4>Presupuesto por proyecto</h4>
+                    <h4>Presupuesto registrado</h4>
                     <div id="reportBudgetPie" class="pie-chart" aria-label="Pastel de presupuestos del informe"></div>
                     <div id="reportBudgetLegend" class="legend-list"></div>
                   </div>
                 </div>
                 <div class="report-chart-block report-candles">
-                  <h4>Velas de flujo por fecha</h4>
+                  <h4>Plano de flujo y proyeccion</h4>
                   <div id="reportCandles" class="candle-chart"></div>
+                  <div id="reportFlowGuide" class="flow-guide"></div>
                 </div>
                 <div class="report-chart-block report-bars">
                   <h4>Indicadores por proyecto</h4>
@@ -578,10 +603,11 @@
                   <small>cobros del negocio</small>
                 </article>
               </section>
-              <div class="grid">
-                <article class="panel">
+              <div class="admin-workspace">
+                <article class="panel admin-form-panel">
                   <h3>Registrar pago o gasto</h3>
                   <form id="detailAdminForm" class="stack-form">
+                    <input name="movementId" type="hidden" />
                     <select name="type">
                       <option>Gasto</option>
                       <option>Ingreso</option>
@@ -600,11 +626,14 @@
                       <option>Vence pronto</option>
                       <option>Aprobado</option>
                     </select>
-                    <button type="submit">Guardar administracion</button>
+                    <button id="detailAdminSubmitButton" type="submit">Guardar administracion</button>
+                    <button id="detailAdminCancelButton" class="ghost-button" type="button" hidden>
+                      Cancelar edicion
+                    </button>
                   </form>
                 </article>
 
-                <article class="panel wide">
+                <article class="panel admin-records-panel">
                   <div class="panel-title">
                     <h3>Pagos, gastos y cobros</h3>
                     <button id="adminPdfButton" class="ghost-button" type="button">
@@ -633,14 +662,30 @@
             </section>
 
             <div class="grid">
+              <article class="panel wide projection-panel">
+                <div class="panel-title">
+                  <div>
+                    <p class="eyebrow">Proyeccion</p>
+                    <h3>Lectura financiera del proyecto</h3>
+                  </div>
+                  <span id="detailProjectionPill" class="pill">Proyecto</span>
+                </div>
+                <div id="detailProjectionMetrics" class="projection-metrics"></div>
+                <div class="projection-layout">
+                  <div id="detailProjectionPlane" class="projection-plane"></div>
+                  <div id="detailProjectionInsights" class="projection-insights"></div>
+                </div>
+              </article>
+
               <article class="panel wide">
                 <div class="panel-title">
                   <div>
                     <p class="eyebrow">Plano</p>
-                    <h3>Velas del proyecto</h3>
+                    <h3>Plano de flujo del proyecto</h3>
                   </div>
                 </div>
                 <div id="detailCandles" class="candle-chart"></div>
+                <div id="detailFlowGuide" class="flow-guide"></div>
               </article>
 
               <article class="panel">
@@ -759,6 +804,6 @@
       </section>
     </main>
 
-    <script src="pages.js?v=20260804-socios-claros"></script>
+    <script src="pages.js?v=20260805-proyecciones"></script>
   </body>
 </html>
