@@ -936,6 +936,21 @@ async function submitAction(action, payload, successMessage) {
       render();
       return;
     }
+    if (action === "update-movement") {
+      try {
+        const remoteData = await legacyReplaceMovement(payload);
+        if (remoteData) {
+          state.data = remoteData;
+          state.backend = "ready";
+          setMessage(successMessage);
+          updateConnection("Sistema activo", "ok");
+          render();
+          return;
+        }
+      } catch {
+        // Continue with the local safety copy below.
+      }
+    }
     applyLocalAction(action, payload);
     saveLocalData();
     setMessage(
@@ -950,7 +965,7 @@ async function submitAction(action, payload, successMessage) {
 }
 
 function isValidationError(error) {
-  return /obligatori|positivo|participacion|supera 100|no reconocida/i.test(error?.message || "");
+  return /obligatori|positivo|participacion|supera 100/i.test(error?.message || "");
 }
 
 function isLocalSession() {
@@ -1187,8 +1202,58 @@ function isCleanStartData(data) {
   return data?.settings?.cleanStartVersion === CLEAN_START_VERSION;
 }
 
+function isRemoteDataShape(data) {
+  return Boolean(
+    data &&
+      typeof data === "object" &&
+      ["projects", "movements", "partners", "inventory", "users"].some((key) =>
+        Array.isArray(data[key]),
+      ),
+  );
+}
+
+function isGeneratedProjectId(projectId) {
+  return String(projectId || "").startsWith("pro-");
+}
+
+function pruneLegacySeedRows(data) {
+  const normalized = normalizeData(data);
+  const projects = normalized.projects.filter((project) => isGeneratedProjectId(project.id));
+  const projectIds = new Set(projects.map((project) => project.id));
+  const belongsToRealProject = (projectId) =>
+    isGeneratedProjectId(projectId) && (!projectIds.size || projectIds.has(projectId));
+
+  return {
+    ...normalized,
+    settings: { ...normalized.settings, cleanStartVersion: CLEAN_START_VERSION },
+    projects,
+    movements: normalized.movements.filter((movement) =>
+      belongsToRealProject(movement.projectId),
+    ),
+    partners: normalized.partners.filter((partner) =>
+      belongsToRealProject(partner.projectId),
+    ),
+    inventory: normalized.inventory.filter((item) =>
+      belongsToRealProject(item.projectId),
+    ),
+    users: normalized.users.filter(
+      (user) =>
+        user.role === "Superadministrador" ||
+        Boolean(user.username) ||
+        belongsToRealProject(user.projectId),
+    ),
+    audit: normalized.audit.filter(
+      (entry) => !entry.projectId || isGeneratedProjectId(entry.projectId),
+    ),
+  };
+}
+
 function normalizeRemoteData(data) {
-  return isCleanStartData(data) ? normalizeData(data) : null;
+  if (!isCleanStartData(data) && !isRemoteDataShape(data)) {
+    return null;
+  }
+
+  return pruneLegacySeedRows(data);
 }
 
 const SHARED_DATA_COLLECTIONS = ["projects", "movements", "partners", "inventory", "users", "audit"];
@@ -1233,8 +1298,207 @@ async function mergeLocalSnapshotIfNeeded(localSnapshot, remoteData) {
     return remoteData;
   }
 
-  const result = await callBackend("merge-local-data", { data: localSnapshot });
-  return normalizeRemoteData(result.data) || remoteData;
+  try {
+    const result = await callBackend("merge-local-data", { data: localSnapshot });
+    return normalizeRemoteData(result.data) || remoteData;
+  } catch {
+    return replayLocalRowsToLegacyBackend(localSnapshot, remoteData);
+  }
+}
+
+function equivalentProject(projects, project) {
+  const name = String(project.name || "").trim().toLowerCase();
+  const budget = numberValue(project.budget);
+
+  return projects.find(
+    (item) =>
+      String(item.id) === String(project.id) ||
+      (String(item.name || "").trim().toLowerCase() === name &&
+        Math.abs(numberValue(item.budget) - budget) < 0.01),
+  );
+}
+
+function equivalentMovement(movements, movement, projectId) {
+  return movements.find(
+    (item) =>
+      String(item.id) === String(movement.id) ||
+      (String(item.projectId) === String(projectId) &&
+        item.type === movement.type &&
+        item.category === movement.category &&
+        String(item.concept || "").trim().toLowerCase() ===
+          String(movement.concept || "").trim().toLowerCase() &&
+        Math.abs(numberValue(item.amount) - numberValue(movement.amount)) < 0.01 &&
+        String(item.movementDate || "") === String(movement.movementDate || "")),
+  );
+}
+
+function equivalentPartner(partners, partner, projectId) {
+  return partners.find(
+    (item) =>
+      String(item.id) === String(partner.id) ||
+      (String(item.projectId) === String(projectId) &&
+        String(item.name || "").trim().toLowerCase() ===
+          String(partner.name || "").trim().toLowerCase() &&
+        Math.abs(numberValue(item.participation) - numberValue(partner.participation)) < 0.01),
+  );
+}
+
+function equivalentInventory(inventory, item, projectId) {
+  return inventory.find(
+    (entry) =>
+      String(entry.id) === String(item.id) ||
+      (String(entry.projectId) === String(projectId) &&
+        String(entry.item || "").trim().toLowerCase() ===
+          String(item.item || "").trim().toLowerCase()),
+  );
+}
+
+function equivalentUser(users, user, projectId) {
+  const username = String(user.username || "").trim().toLowerCase();
+
+  return users.find(
+    (item) =>
+      String(item.id) === String(user.id) ||
+      (username && String(item.username || "").trim().toLowerCase() === username) ||
+      (String(item.projectId || "") === String(projectId || "") &&
+        String(item.name || "").trim().toLowerCase() ===
+          String(user.name || "").trim().toLowerCase()),
+  );
+}
+
+async function legacyCreate(action, payload) {
+  const result = await callBackend(action, payload);
+  return normalizeRemoteData(result.data);
+}
+
+async function legacyReplaceMovement(payload) {
+  if (!payload.movementId) {
+    return null;
+  }
+
+  await callBackend("delete-movement", { movementId: payload.movementId });
+  const result = await callBackend("create-movement", {
+    projectId: payload.projectId,
+    type: payload.type,
+    category: payload.category,
+    concept: payload.concept,
+    amount: numberValue(payload.amount),
+    movementDate: payload.movementDate,
+    status: payload.status,
+    partnerId: payload.partnerId,
+  });
+  return normalizeRemoteData(result.data);
+}
+
+async function replayLocalRowsToLegacyBackend(localSnapshot, remoteData) {
+  let remote = normalizeRemoteData(remoteData) || normalizeData(remoteData);
+  const idMap = new Map();
+
+  for (const project of sharedRows(localSnapshot, "projects")) {
+    if (!project.name) {
+      continue;
+    }
+
+    let match = equivalentProject(remote.projects, project);
+    if (!match) {
+      const next = await legacyCreate("create-project", {
+        name: project.name,
+        type: project.type,
+        country: project.country,
+        currency: project.currency,
+        timezone: project.timezone,
+        budget: numberValue(project.budget),
+        objective: project.objective,
+        status: project.status,
+      });
+      if (next) {
+        remote = next;
+        match = equivalentProject(remote.projects, project);
+      }
+    }
+
+    if (match) {
+      idMap.set(project.id, match.id);
+    }
+  }
+
+  for (const partner of sharedRows(localSnapshot, "partners")) {
+    const projectId = idMap.get(partner.projectId) || partner.projectId;
+    if (!projectId || equivalentPartner(remote.partners, partner, projectId)) {
+      continue;
+    }
+
+    const next = await legacyCreate("create-partner", {
+      projectId,
+      name: partner.name,
+      type: partner.type,
+      contribution: numberValue(partner.contribution),
+      participation: numberValue(partner.participation),
+    });
+    if (next) {
+      remote = next;
+    }
+  }
+
+  for (const movement of sharedRows(localSnapshot, "movements")) {
+    const projectId = idMap.get(movement.projectId) || movement.projectId;
+    if (!projectId || equivalentMovement(remote.movements, movement, projectId)) {
+      continue;
+    }
+
+    const next = await legacyCreate("create-movement", {
+      projectId,
+      type: movement.type,
+      category: movement.category,
+      concept: movement.concept,
+      amount: numberValue(movement.amount),
+      movementDate: movement.movementDate,
+      status: movement.status,
+      partnerId: movement.partnerId,
+    });
+    if (next) {
+      remote = next;
+    }
+  }
+
+  for (const item of sharedRows(localSnapshot, "inventory")) {
+    const projectId = idMap.get(item.projectId) || item.projectId;
+    if (!projectId || equivalentInventory(remote.inventory, item, projectId)) {
+      continue;
+    }
+
+    const next = await legacyCreate("create-inventory", {
+      projectId,
+      item: item.item,
+      category: item.category,
+      quantity: numberValue(item.quantity),
+      unitCost: numberValue(item.unitCost),
+    });
+    if (next) {
+      remote = next;
+    }
+  }
+
+  for (const user of sharedRows(localSnapshot, "users")) {
+    const projectId = idMap.get(user.projectId) || user.projectId || "";
+    if (!user.username || !user.loginHash || !user.passwordHash || equivalentUser(remote.users, user, projectId)) {
+      continue;
+    }
+
+    const next = await legacyCreate("create-user", {
+      name: user.name,
+      username: user.username,
+      role: user.role,
+      projectId,
+      loginHash: user.loginHash,
+      passwordHash: user.passwordHash,
+    });
+    if (next) {
+      remote = next;
+    }
+  }
+
+  return normalizeRemoteData(remote) || remote;
 }
 
 function filteredProjects() {

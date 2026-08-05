@@ -142,7 +142,7 @@ test("ships the GitHub Pages and Apps Script integration", async () => {
   assert.match(index, /Crear usuario/);
   assert.match(index, /Usuario de acceso/);
   assert.match(index, /Clave de acceso/);
-  assert.match(index, /20260805-proyecciones/);
+  assert.match(index, /20260805-persistencia/);
   assert.match(index, /Socio \/ responsable/);
   assert.match(index, /partnerParticipationStatus/);
   assert.match(index, /partnersEquitySummary/);
@@ -161,6 +161,10 @@ test("ships the GitHub Pages and Apps Script integration", async () => {
   assert.match(pages, /pron-informe-completo/);
   assert.match(pages, /merge-local-data/);
   assert.match(pages, /mergeLocalSnapshotIfNeeded/);
+  assert.match(pages, /isRemoteDataShape/);
+  assert.match(pages, /pruneLegacySeedRows/);
+  assert.match(pages, /replayLocalRowsToLegacyBackend/);
+  assert.match(pages, /legacyReplaceMovement/);
   assert.match(pages, /projectReportAnalysis/);
   assert.match(pages, /projectionSummary/);
   assert.match(pages, /projectionText/);
