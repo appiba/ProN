@@ -105,6 +105,7 @@ const FORECAST_STATUSES = new Set(["Cotizado", "Proyectado", "Programado", "Pend
 const EVENT_STATUS = "Evento en marcha";
 const IVA_RATE = 0.15;
 const CONTINGENCY_RATE = 0.05;
+const VINILOS_PROJECT_ID = "pro-vinilos-estimacion";
 const PERRO_NEGRO_PROJECT_ID = "pro-db533379-0c00-4ef4-9602-5c164a15b31c";
 const EVENT_REFERENCE_ASSETS = [
   {
@@ -1383,6 +1384,59 @@ function applyLocalAction(action, payload) {
   }
 }
 
+function vinilosSeed() {
+  const date = "2026-08-05";
+  return {
+    id: VINILOS_PROJECT_ID,
+    name: "Vinilos",
+    type: "Proyecto personalizado",
+    country: "Ecuador",
+    currency: "USD",
+    timezone: "America/Guayaquil",
+    status: "En revision",
+    budget: 15000,
+    objective:
+      "Estimacion inicial de Vinilos por $15.000. Pendiente completar presupuesto, socios, gastos e ingresos reales.",
+    createdAt: date,
+    updatedAt: date,
+  };
+}
+
+function isVinilosProject(project) {
+  const name = normalizedSearchText(project?.name);
+  return name.includes("vinil");
+}
+
+function withVinilosSeed(data) {
+  const seed = vinilosSeed();
+  const vinilosIds = new Set(
+    data.projects
+      .filter((project) => isVinilosProject(project) || project.id === VINILOS_PROJECT_ID)
+      .map((project) => project.id),
+  );
+  vinilosIds.add(VINILOS_PROJECT_ID);
+  const isVinilosLinked = (projectId) => vinilosIds.has(projectId);
+
+  return {
+    ...data,
+    projects: [
+      seed,
+      ...data.projects.filter(
+        (project) => project.id !== VINILOS_PROJECT_ID && !isVinilosProject(project),
+      ),
+    ],
+    movements: data.movements.filter((movement) => !isVinilosLinked(movement.projectId)),
+    partners: data.partners.filter((partner) => !isVinilosLinked(partner.projectId)),
+    inventory: data.inventory.filter((item) => !isVinilosLinked(item.projectId)),
+    users: data.users.map((user) =>
+      isVinilosLinked(user.projectId)
+        ? { ...user, projectId: VINILOS_PROJECT_ID }
+        : user,
+    ),
+    audit: data.audit.filter((entry) => !isVinilosLinked(entry.projectId)),
+  };
+}
+
 function perroNegroSeed(projectId = PERRO_NEGRO_PROJECT_ID) {
   const date = "2026-08-05";
   const project = {
@@ -1488,7 +1542,8 @@ function hasEquivalentMovement(rows, seed) {
 }
 
 function withOfficialSeeds(data) {
-  const existingProject = data.projects.find(
+  const baseData = withVinilosSeed(data);
+  const existingProject = baseData.projects.find(
     (project) =>
       project.id === PERRO_NEGRO_PROJECT_ID ||
       normalizedSearchText(project.name).includes("perro negro"),
@@ -1496,7 +1551,7 @@ function withOfficialSeeds(data) {
   const projectId = existingProject?.id || PERRO_NEGRO_PROJECT_ID;
   const seed = perroNegroSeed(projectId);
   const projects = existingProject
-    ? data.projects.map((project) =>
+    ? baseData.projects.map((project) =>
         project.id === projectId
           ? {
               ...project,
@@ -1506,12 +1561,12 @@ function withOfficialSeeds(data) {
             }
           : project,
       )
-    : [seed.project, ...data.projects];
+    : [seed.project, ...baseData.projects];
   const partners = [
-    ...data.partners,
+    ...baseData.partners,
     ...seed.partners.filter(
       (partner) =>
-        !data.partners.some(
+        !baseData.partners.some(
           (row) =>
             row.id === partner.id ||
             (row.projectId === projectId &&
@@ -1520,15 +1575,15 @@ function withOfficialSeeds(data) {
     ),
   ];
   const movements = [
-    ...data.movements,
-    ...seed.movements.filter((movement) => !hasEquivalentMovement(data.movements, movement)),
+    ...baseData.movements,
+    ...seed.movements.filter((movement) => !hasEquivalentMovement(baseData.movements, movement)),
   ];
-  const audit = data.audit.some((entry) => entry.id === seed.audit.id)
-    ? data.audit
-    : [seed.audit, ...data.audit];
+  const audit = baseData.audit.some((entry) => entry.id === seed.audit.id)
+    ? baseData.audit
+    : [seed.audit, ...baseData.audit];
 
   return {
-    ...data,
+    ...baseData,
     projects,
     partners,
     movements,

@@ -142,7 +142,7 @@ test("ships the GitHub Pages and Apps Script integration", async () => {
   assert.match(index, /Crear usuario/);
   assert.match(index, /Usuario de acceso/);
   assert.match(index, /Clave de acceso/);
-  assert.match(index, /20260805-perro-negro/);
+  assert.match(index, /20260805-vinilos-perro/);
   assert.match(index, /eventControlPanel/);
   assert.match(index, /eventScorecards/);
   assert.match(index, /eventBudgetBody/);
@@ -190,6 +190,10 @@ test("ships the GitHub Pages and Apps Script integration", async () => {
   assert.match(pages, /PROJECT_STATUSES/);
   assert.match(pages, /ADMIN_READY_STATUSES/);
   assert.match(pages, /Evento en marcha/);
+  assert.match(pages, /VINILOS_PROJECT_ID/);
+  assert.match(pages, /vinilosSeed/);
+  assert.match(pages, /withVinilosSeed/);
+  assert.match(pages, /Estimacion inicial de Vinilos/);
   assert.match(pages, /eventFinancialSummary/);
   assert.match(pages, /renderEventControlPanel/);
   assert.match(pages, /renderEventProjectionPlane/);
