@@ -259,6 +259,7 @@ function activePartnerProjectId() {
   const candidates = [
     sessionProjectId(),
     state.activeTab === "proyecto-detalle" ? state.detailProjectId : "",
+    state.activeTab === "socios" ? partnerFormProjectId() : "",
     summaryProjectId(),
     state.selectedProjectId,
     state.detailProjectId,
@@ -1434,13 +1435,12 @@ function isVinilosProject(project) {
 
 function withVinilosSeed(data) {
   const seed = vinilosSeed();
-  const vinilosIds = new Set(
+  const legacyVinilosIds = new Set(
     data.projects
-      .filter((project) => isVinilosProject(project) || project.id === VINILOS_PROJECT_ID)
+      .filter((project) => project.id !== VINILOS_PROJECT_ID && isVinilosProject(project))
       .map((project) => project.id),
   );
-  vinilosIds.add(VINILOS_PROJECT_ID);
-  const isVinilosLinked = (projectId) => vinilosIds.has(projectId);
+  const isLegacyVinilosLinked = (projectId) => legacyVinilosIds.has(projectId);
 
   return {
     ...data,
@@ -1450,15 +1450,15 @@ function withVinilosSeed(data) {
         (project) => project.id !== VINILOS_PROJECT_ID && !isVinilosProject(project),
       ),
     ],
-    movements: data.movements.filter((movement) => !isVinilosLinked(movement.projectId)),
-    partners: data.partners.filter((partner) => !isVinilosLinked(partner.projectId)),
-    inventory: data.inventory.filter((item) => !isVinilosLinked(item.projectId)),
+    movements: data.movements.filter((movement) => !isLegacyVinilosLinked(movement.projectId)),
+    partners: data.partners.filter((partner) => !isLegacyVinilosLinked(partner.projectId)),
+    inventory: data.inventory.filter((item) => !isLegacyVinilosLinked(item.projectId)),
     users: data.users.map((user) =>
-      isVinilosLinked(user.projectId)
+      isLegacyVinilosLinked(user.projectId)
         ? { ...user, projectId: VINILOS_PROJECT_ID }
         : user,
     ),
-    audit: data.audit.filter((entry) => !isVinilosLinked(entry.projectId)),
+    audit: data.audit.filter((entry) => !isLegacyVinilosLinked(entry.projectId)),
   };
 }
 
@@ -2101,12 +2101,30 @@ function renderProjectSelects() {
     ...projectOptions.map((option) => option.cloneNode(true)),
   );
   userProjectInput.value = state.selectedProjectId;
+
+  const partnerProjectInput = $("#partnerProjectInput");
+  if (partnerProjectInput) {
+    const currentProjectId = partnerProjectInput.value || state.selectedProjectId;
+    partnerProjectInput.replaceChildren(
+      ...(projectOptions.length
+        ? projectOptions.map((option) => option.cloneNode(true))
+        : [el("option", { value: "", text: "Crea un proyecto" })]),
+    );
+    partnerProjectInput.value = projects.some((project) => project.id === currentProjectId)
+      ? currentProjectId
+      : state.selectedProjectId;
+  }
 }
 
 function renderPartnerSelects() {
   populatePartnerSelect($("#movementForm"), state.selectedProjectId);
   populatePartnerSelect($("#detailMovementForm"), state.detailProjectId || state.selectedProjectId);
   populatePartnerSelect($("#detailAdminForm"), state.detailProjectId || state.selectedProjectId);
+}
+
+function partnerFormProjectId() {
+  const projectId = $("#partnerProjectInput")?.value || state.selectedProjectId;
+  return projectId && canAccessProject(projectId) ? projectId : "";
 }
 
 function populatePartnerSelect(form, projectId) {
@@ -2130,9 +2148,10 @@ function populatePartnerSelect(form, projectId) {
 }
 
 function renderPartnerParticipationControls() {
+  const partnerProjectId = partnerFormProjectId();
   renderPartnerParticipationForm(
     $("#partnerForm"),
-    state.selectedProjectId,
+    partnerProjectId,
     "#partnerParticipationStatus",
   );
   renderPartnerParticipationForm(
@@ -2140,7 +2159,7 @@ function renderPartnerParticipationControls() {
     state.detailProjectId || state.selectedProjectId,
     "#detailPartnerParticipationStatus",
   );
-  renderProjectParticipationSummary("#partnersEquitySummary", state.selectedProjectId);
+  renderProjectParticipationSummary("#partnersEquitySummary", partnerProjectId);
   renderProjectParticipationSummary(
     "#detailPartnersEquitySummary",
     state.detailProjectId || state.selectedProjectId,
@@ -2168,6 +2187,7 @@ function renderPartnerParticipationForm(form, projectId, statusSelector) {
   const contributionAfter = stats.contribution + requestedContribution;
   const budgetGapAfter = Math.max(0, stats.budget - contributionAfter);
   const surplusAfter = Math.max(0, contributionAfter - stats.budget);
+  const budgetShare = stats.budget * (requested / 100);
   const input = form?.elements.participation;
 
   if (input) {
@@ -2181,6 +2201,7 @@ function renderPartnerParticipationForm(form, projectId, statusSelector) {
     `Asignado ${percentLabel(stats.assigned)} | Disponible ${percentLabel(stats.remaining)} | ` +
     `Con este socio quedaria ${percentLabel(totalAfter)} | Libre despues ${percentLabel(remainingAfter)}` +
     (overAfter > 0 ? ` | Excedente ${percentLabel(overAfter)}` : "") +
+    ` | Este porcentaje equivale a ${money(budgetShare)} del presupuesto` +
     ` | Capital real quedaria ${money(contributionAfter)} | ` +
     (surplusAfter > 0
       ? `Sobra ${money(surplusAfter)} frente al presupuesto`
@@ -3262,6 +3283,8 @@ function renderMovements() {
 
 function renderPartnerCard(partner) {
   const stats = partnerStats(partner.id);
+  const budgetShare = numberValue(projectById(partner.projectId)?.budget) *
+    (numberValue(partner.participation) / 100);
 
   return el("div", { class: "partner-card" }, [
     el("div", { class: "partner-card-head" }, [
@@ -3279,6 +3302,10 @@ function renderPartnerCard(partner) {
       el("li", {}, [
         el("span", { text: "Aporte base" }),
         el("b", { text: money(partner.contribution) }),
+      ]),
+      el("li", {}, [
+        el("span", { text: "Valor segun % presupuesto" }),
+        el("b", { text: money(budgetShare) }),
       ]),
       el("li", {}, [
         el("span", { text: "Aportes/Inversiones" }),
@@ -5183,6 +5210,13 @@ function bindEvents() {
   $("#detailAdminForm").elements.type.addEventListener("change", renderCategorySelects);
   $("#partnerForm").elements.participation.addEventListener("input", renderPartnerParticipationControls);
   $("#partnerForm").elements.contribution.addEventListener("input", renderPartnerParticipationControls);
+  $("#partnerProjectInput").addEventListener("change", (event) => {
+    state.selectedProjectId = event.target.value;
+    $("#projectSelect").value = event.target.value;
+    renderPartnerSelects();
+    renderPartnerParticipationControls();
+    renderPartners();
+  });
   $("#detailPartnerForm").elements.participation.addEventListener("input", renderPartnerParticipationControls);
   $("#detailPartnerForm").elements.contribution.addEventListener("input", renderPartnerParticipationControls);
   $("#backToProjectsButton").addEventListener("click", () => setActiveView("proyectos"));
@@ -5330,11 +5364,13 @@ function bindEvents() {
 
   $("#partnerForm").addEventListener("submit", (event) => {
     event.preventDefault();
-    if (!requireSelectedProject("Crea primero un proyecto para vincular socios.")) {
+    const projectId = partnerFormProjectId();
+    if (!projectId) {
+      setMessage("Escoge el proyecto donde quieres guardar este socio.", "warning");
       return;
     }
     const data = formData(event.currentTarget);
-    if (!validatePartnerParticipation(state.selectedProjectId, data.participation)) {
+    if (!validatePartnerParticipation(projectId, data.participation)) {
       renderPartnerParticipationControls();
       return;
     }
@@ -5342,13 +5378,14 @@ function bindEvents() {
       "create-partner",
       {
         ...data,
-        projectId: state.selectedProjectId,
+        projectId,
         contribution: numberValue(data.contribution),
         participation: numberValue(data.participation),
       },
       "Socio guardado.",
     );
     event.currentTarget.reset();
+    event.currentTarget.elements.projectId.value = projectId;
     renderPartnerParticipationControls();
   });
 

@@ -9,7 +9,7 @@
       content="ERP dashboard en espanol para negocios, proyectos, eventos, finanzas, socios, inventario y usuarios."
     />
     <link rel="icon" href="public/favicon.svg" />
-    <link rel="stylesheet" href="pages.css?v=20260807-equilibrio" />
+    <link rel="stylesheet" href="pages.css?v=20260807-vinilos-socios" />
   </head>
   <body>
     <section id="loginScreen" class="login-screen">
@@ -359,6 +359,7 @@
             <article class="panel">
               <h3>Crear socio o inversionista</h3>
               <form id="partnerForm" class="stack-form">
+                <select id="partnerProjectInput" name="projectId" required></select>
                 <input name="name" placeholder="Nombre" required />
                 <select name="type">
                   <option>Socio</option>
@@ -367,8 +368,8 @@
                   <option>Proveedor estrategico</option>
                   <option>Patrocinador</option>
                 </select>
-                <input name="contribution" inputmode="decimal" placeholder="Aporte USD" />
-                <input name="participation" inputmode="decimal" placeholder="Participacion %" />
+                <input name="contribution" inputmode="decimal" placeholder="Aporte USD (opcional)" />
+                <input name="participation" inputmode="decimal" placeholder="Participacion % del presupuesto" />
                 <div id="partnerParticipationStatus" class="participation-status" aria-live="polite"></div>
                 <button type="submit">Guardar socio</button>
               </form>
@@ -870,6 +871,6 @@
       </section>
     </main>
 
-    <script src="pages.js?v=20260807-equilibrio"></script>
+    <script src="pages.js?v=20260807-vinilos-socios"></script>
   </body>
 </html>

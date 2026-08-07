@@ -142,7 +142,7 @@ test("ships the GitHub Pages and Apps Script integration", async () => {
   assert.match(index, /Crear usuario/);
   assert.match(index, /Usuario de acceso/);
   assert.match(index, /Clave de acceso/);
-  assert.match(index, /20260807-equilibrio/);
+  assert.match(index, /20260807-vinilos-socios/);
   assert.match(index, /eventControlPanel/);
   assert.match(index, /eventScorecards/);
   assert.match(index, /eventBudgetBody/);
@@ -151,6 +151,9 @@ test("ships the GitHub Pages and Apps Script integration", async () => {
   assert.match(index, /eventReferencePanel/);
   assert.match(index, /eventReferenceGallery/);
   assert.match(index, /Socio \/ responsable/);
+  assert.match(index, /partnerProjectInput/);
+  assert.match(index, /Aporte USD \(opcional\)/);
+  assert.match(index, /Participacion % del presupuesto/);
   assert.match(index, /partnerParticipationStatus/);
   assert.match(index, /partnersEquitySummary/);
   assert.match(index, /partners-project-panel/);
@@ -193,6 +196,11 @@ test("ships the GitHub Pages and Apps Script integration", async () => {
   assert.match(pages, /VINILOS_PROJECT_ID/);
   assert.match(pages, /vinilosSeed/);
   assert.match(pages, /withVinilosSeed/);
+  assert.match(pages, /legacyVinilosIds/);
+  assert.match(pages, /isLegacyVinilosLinked/);
+  assert.match(pages, /partnerFormProjectId/);
+  assert.match(pages, /Este porcentaje equivale/);
+  assert.match(pages, /Valor segun % presupuesto/);
   assert.match(pages, /Estimacion inicial de Vinilos/);
   assert.match(pages, /eventFinancialSummary/);
   assert.match(pages, /renderEventControlPanel/);
