@@ -853,7 +853,7 @@ nav button:hover {
 }
 
 .projection-plane {
-  min-height: 300px;
+  min-height: 350px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background:
@@ -866,12 +866,37 @@ nav button:hover {
 .projection-plane svg {
   display: block;
   width: 100%;
-  min-height: 300px;
+  min-height: 350px;
+}
+
+.projection-plane .projection-point {
+  cursor: help;
+}
+
+.projection-plane .projection-point:focus {
+  outline: none;
+}
+
+.projection-plane .projection-point:focus circle,
+.projection-plane .projection-point:hover circle {
+  stroke: #10201d;
+  stroke-width: 4px;
+}
+
+.projection-plane .plane-text {
+  paint-order: stroke;
+  stroke: #fbfcfb;
+  stroke-linejoin: round;
+  stroke-width: 4px;
+}
+
+.projection-plane .axis-label {
+  stroke-width: 5px;
 }
 
 .projection-plane .empty-state {
   display: grid;
-  min-height: 300px;
+  min-height: 350px;
   place-items: center;
   color: var(--muted);
   font-weight: 800;

@@ -248,7 +248,28 @@ function partnerName(partnerId) {
 }
 
 function projectPartners(projectId) {
-  return state.data.partners.filter((partner) => !projectId || partner.projectId === projectId);
+  if (!projectId) {
+    return [];
+  }
+
+  return state.data.partners.filter((partner) => partner.projectId === projectId);
+}
+
+function activePartnerProjectId() {
+  const candidates = [
+    sessionProjectId(),
+    state.activeTab === "proyecto-detalle" ? state.detailProjectId : "",
+    summaryProjectId(),
+    state.selectedProjectId,
+    state.detailProjectId,
+  ];
+
+  return candidates.find((projectId) => projectId && canAccessProject(projectId) && projectById(projectId)) || "";
+}
+
+function activeProjectPartners() {
+  const projectId = activePartnerProjectId();
+  return projectId ? projectPartners(projectId) : [];
 }
 
 function projectParticipationStats(projectId) {
@@ -404,6 +425,8 @@ function eventFinancialSummary(project, movements, partners) {
   const marginExpected = incomeExpected ? (profitExpected / incomeExpected) * 100 : 0;
   const breakeven = costTarget ? (incomeExpected / costTarget) * 100 : 0;
   const revenueGap = Math.max(0, costTarget - incomeExpected);
+  const breakevenAmount = costTarget;
+  const breakevenStatus = revenueGap ? "Pendiente" : "Cubierto";
   const partnerContribution = partners.reduce((sum, partner) => sum + numberValue(partner.contribution), 0);
   const capitalBase = Math.max(partnerContribution, investment);
   const scenarioBase = incomeExpected || costTarget;
@@ -442,6 +465,8 @@ function eventFinancialSummary(project, movements, partners) {
     marginExpected,
     breakeven,
     revenueGap,
+    breakevenAmount,
+    breakevenStatus,
     partnerContribution,
     capitalBase,
     scenarios,
@@ -2019,6 +2044,7 @@ function renderMetrics() {
   const current = totals();
   const projects = scopedProjects();
   const inventory = scopedInventory();
+  const partners = activeProjectPartners();
   const activeProjects = projects.filter(
     (project) => project.status !== "Archivado",
   ).length;
@@ -2034,7 +2060,7 @@ function renderMetrics() {
   $("#metricExpenses").textContent = money(current.expenses);
   $("#balanceBadge").textContent = `${currentScopeLabel()} ${money(current.balance)}`;
   setTextIfExists("#metricActiveProjects", String(activeProjects));
-  setTextIfExists("#metricPartners", String(scopedPartners().length));
+  setTextIfExists("#metricPartners", String(partners.length));
   setTextIfExists("#metricInventoryValue", money(inventoryValue));
   setTextIfExists("#metricAudit", String(state.data.audit.length));
 }
@@ -2514,9 +2540,11 @@ function renderProjectionMetrics(selector, summary) {
         event.profitExpected < 0 ? "danger" : "good",
       ),
       projectionMetric(
-        "Equilibrio",
-        percentLabel(event.breakeven),
-        event.revenueGap ? `faltan ${money(event.revenueGap)}` : "costo cubierto",
+        "Punto equilibrio",
+        money(event.breakevenAmount),
+        event.revenueGap
+          ? `faltan ${money(event.revenueGap)} | cubierto ${percentLabel(event.breakeven)}`
+          : `cubierto ${percentLabel(event.breakeven)} | utilidad ${money(event.profitExpected)}`,
         event.revenueGap ? "warning" : "good",
       ),
       projectionMetric(
@@ -2579,12 +2607,21 @@ function projectionInsightNodes(summary) {
   if (summary.eventSummary) {
     const event = summary.eventSummary;
     nodes.push(
+      el("div", {}, [
+        el("strong", { text: "Como leer el plano" }),
+        el("span", {
+          text:
+            "Pasa el mouse o deja el dedo sobre cada punto para ver su leyenda. La linea punteada marca el punto de equilibrio: la venta minima que debe cubrirse para no perder.",
+        }),
+      ]),
+    );
+    nodes.push(
       el("div", { class: event.revenueGap ? "warning" : "" }, [
-        el("strong", { text: event.revenueGap ? "Venta por completar" : "Venta cubre costo fijo" }),
+        el("strong", { text: "Punto de equilibrio" }),
         el("span", {
           text: event.revenueGap
-            ? `Falta vender o cobrar ${money(event.revenueGap)} para cubrir el costo fijo del evento.`
-            : `La venta esperada cubre el costo fijo y deja utilidad de ${money(event.profitExpected)}.`,
+            ? `El evento necesita cubrir ${money(event.breakevenAmount)}. Falta vender o cobrar ${money(event.revenueGap)} para llegar a cero perdidas.`
+            : `El evento necesita cubrir ${money(event.breakevenAmount)} y la venta esperada ya lo supera; utilidad proyectada ${money(event.profitExpected)}.`,
         }),
       ]),
     );
@@ -2678,18 +2715,118 @@ function projectionInsightNodes(summary) {
   return nodes;
 }
 
+function projectionPointTitle(point) {
+  const detail = point.description ? ` ${point.description}` : "";
+  return `${point.label}: ${money(point.value)}.${detail}`;
+}
+
+function projectionTextAnchor(index, total) {
+  if (index === 0) {
+    return "start";
+  }
+  if (index === total - 1) {
+    return "end";
+  }
+  return "middle";
+}
+
+function projectionTextX(point, index, total) {
+  if (index === 0) {
+    return point.x - 10;
+  }
+  if (index === total - 1) {
+    return point.x + 10;
+  }
+  return point.x;
+}
+
+function projectionValueY(point, height, padding) {
+  const raw = point.y - 16 < padding.top + 8 ? point.y + 28 : point.y - 16;
+  return Math.min(height - padding.bottom - 16, Math.max(22, raw));
+}
+
+function renderProjectionPoint(point, index, total, height, padding) {
+  const anchor = projectionTextAnchor(index, total);
+  const textX = projectionTextX(point, index, total);
+  const title = projectionPointTitle(point);
+
+  return svgNode("g", {
+    class: "projection-point",
+    tabindex: "0",
+    "aria-label": title,
+  }, [
+    svgNode("title", {}, [document.createTextNode(title)]),
+    svgNode("circle", {
+      cx: point.x,
+      cy: point.y,
+      r: "8",
+      fill: point.color,
+      stroke: "#ffffff",
+      "stroke-width": "3",
+    }),
+    svgNode("text", {
+      class: "plane-text",
+      x: textX,
+      y: height - 30,
+      "text-anchor": anchor,
+      fill: "#65736f",
+      "font-size": "11",
+      "font-weight": "800",
+    }, [document.createTextNode(point.label)]),
+    svgNode("text", {
+      class: "plane-text plane-value",
+      x: textX,
+      y: projectionValueY(point, height, padding),
+      "text-anchor": anchor,
+      fill: point.color,
+      "font-size": "12",
+      "font-weight": "900",
+    }, [document.createTextNode(money(point.value).replace(",00", ""))]),
+  ]);
+}
+
 function renderEventProjectionPlane(selector, event) {
   const container = $(selector);
   const width = 960;
-  const height = 300;
-  const padding = { top: 42, right: 42, bottom: 58, left: 84 };
+  const height = 360;
+  const padding = { top: 54, right: 52, bottom: 82, left: 104 };
   const points = [
-    { label: "Costo fijo", value: event.costTarget, color: "#d95f43" },
-    { label: "Venta esperada", value: event.incomeExpected, color: "#315f9f" },
-    { label: "Cobrado", value: event.incomeReal, color: "#0f766e" },
-    { label: "Utilidad", value: event.profitExpected, color: event.profitExpected < 0 ? "#d95f43" : "#0f766e" },
-    { label: "Capital socios", value: event.capitalBase, color: "#f2b84b" },
-    { label: "Brecha venta", value: event.revenueGap, color: event.revenueGap ? "#d95f43" : "#0f766e" },
+    {
+      label: "Punto equilibrio",
+      value: event.breakevenAmount,
+      color: "#d95f43",
+      description: "Venta minima que debe cubrir el evento para no perder.",
+    },
+    {
+      label: "Venta esperada",
+      value: event.incomeExpected,
+      color: "#315f9f",
+      description: "Ingreso comercial estimado con boletos, barra, auspicios o marcas.",
+    },
+    {
+      label: "Cobrado",
+      value: event.incomeReal,
+      color: "#0f766e",
+      description: "Dinero real ya registrado como cobrado.",
+    },
+    {
+      label: "Utilidad",
+      value: event.profitExpected,
+      color: event.profitExpected < 0 ? "#d95f43" : "#0f766e",
+      description: "Venta esperada menos el punto de equilibrio.",
+    },
+    {
+      label: "Capital socios",
+      value: event.capitalBase,
+      color: "#f2b84b",
+      description: "Aportes o inversion registrada por socios del evento.",
+    },
+    {
+      label: "Falta venta",
+      value: event.revenueGap,
+      color: event.revenueGap ? "#d95f43" : "#0f766e",
+      description: "Monto que falta para llegar al punto de equilibrio; si es cero, ya esta cubierto.",
+    },
   ];
   const values = points.map((point) => point.value);
   const high = Math.max(1, ...values);
@@ -2705,7 +2842,8 @@ function renderEventProjectionPlane(selector, event) {
   }));
   const path = positioned.map((point, index) => `${index ? "L" : "M"} ${point.x} ${point.y}`).join(" ");
   const zeroY = yScale(0);
-  const costY = yScale(event.costTarget);
+  const costY = yScale(event.breakevenAmount);
+  const costLineLabelY = Math.max(28, Math.min(height - padding.bottom - 24, costY - 12));
 
   const svg = svgNode("svg", {
     viewBox: `0 0 ${width} ${height}`,
@@ -2730,12 +2868,14 @@ function renderEventProjectionPlane(selector, event) {
       "stroke-dasharray": "6 7",
     }),
     svgNode("text", {
-      x: padding.left,
-      y: Math.max(16, costY - 8),
+      class: "plane-text axis-label",
+      x: width - padding.right - 8,
+      y: costLineLabelY,
       fill: "#8b2e1d",
       "font-size": "12",
       "font-weight": "800",
-    }, [document.createTextNode("linea de costo fijo")]),
+      "text-anchor": "end",
+    }, [document.createTextNode("linea punto equilibrio")]),
     svgNode("path", {
       d: path,
       fill: "none",
@@ -2745,32 +2885,9 @@ function renderEventProjectionPlane(selector, event) {
       "stroke-linejoin": "round",
       opacity: "0.42",
     }),
-    ...positioned.flatMap((point) => [
-      svgNode("circle", {
-        cx: point.x,
-        cy: point.y,
-        r: "8",
-        fill: point.color,
-        stroke: "#ffffff",
-        "stroke-width": "3",
-      }),
-      svgNode("text", {
-        x: point.x,
-        y: height - 24,
-        "text-anchor": "middle",
-        fill: "#65736f",
-        "font-size": "12",
-        "font-weight": "800",
-      }, [document.createTextNode(point.label)]),
-      svgNode("text", {
-        x: point.x,
-        y: Math.max(18, point.y - 14),
-        "text-anchor": "middle",
-        fill: point.color,
-        "font-size": "12",
-        "font-weight": "900",
-      }, [document.createTextNode(money(point.value).replace(",00", ""))]),
-    ]),
+    ...positioned.map((point, index) =>
+      renderProjectionPoint(point, index, positioned.length, height, padding),
+    ),
   ]);
 
   container.replaceChildren(svg);
@@ -2790,15 +2907,45 @@ function renderProjectionPlane(selector, summary) {
   }
 
   const width = 960;
-  const height = 300;
-  const padding = { top: 42, right: 38, bottom: 54, left: 74 };
+  const height = 350;
+  const padding = { top: 54, right: 52, bottom: 78, left: 94 };
   const points = [
-    { label: "Presupuesto", value: summary.scope.current.budget, color: "#0f766e" },
-    { label: "Capital real", value: summary.capital, color: "#315f9f" },
-    { label: "Gastos", value: summary.scope.current.expenses, color: "#d95f43" },
-    { label: "Balance hoy", value: summary.scope.current.balance, color: summary.scope.current.balance < 0 ? "#d95f43" : "#10201d" },
-    { label: "Proy. 30 dias", value: summary.projectedBalance30, color: summary.projectedBalance30 < 0 ? "#d95f43" : "#0f766e" },
-    { label: "Brecha", value: summary.budgetGap, color: summary.budgetGap > 0 ? "#f2b84b" : "#0f766e" },
+    {
+      label: "Presupuesto",
+      value: summary.scope.current.budget,
+      color: "#0f766e",
+      description: "Meta economica registrada para el proyecto.",
+    },
+    {
+      label: "Capital real",
+      value: summary.capital,
+      color: "#315f9f",
+      description: "Ingresos e inversiones ya registrados.",
+    },
+    {
+      label: "Gastos",
+      value: summary.scope.current.expenses,
+      color: "#d95f43",
+      description: "Total de gastos registrados en el proyecto.",
+    },
+    {
+      label: "Balance hoy",
+      value: summary.scope.current.balance,
+      color: summary.scope.current.balance < 0 ? "#d95f43" : "#10201d",
+      description: "Resultado actual: ingresos mas inversiones menos gastos.",
+    },
+    {
+      label: "Proy. 30 dias",
+      value: summary.projectedBalance30,
+      color: summary.projectedBalance30 < 0 ? "#d95f43" : "#0f766e",
+      description: "Tendencia estimada a 30 dias usando el historial con fechas.",
+    },
+    {
+      label: "Brecha",
+      value: summary.budgetGap,
+      color: summary.budgetGap > 0 ? "#f2b84b" : "#0f766e",
+      description: "Monto que falta para cubrir el presupuesto con capital real.",
+    },
   ];
   const values = points.map((point) => point.value);
   const high = Math.max(1, ...values, summary.scope.current.budget);
@@ -2839,11 +2986,13 @@ function renderProjectionPlane(selector, summary) {
       "stroke-dasharray": "6 7",
     }),
     svgNode("text", {
-      x: padding.left,
-      y: Math.max(16, budgetY - 8),
+      class: "plane-text axis-label",
+      x: width - padding.right - 8,
+      y: Math.max(28, Math.min(height - padding.bottom - 24, budgetY - 12)),
       fill: "#0f766e",
       "font-size": "12",
       "font-weight": "800",
+      "text-anchor": "end",
     }, [document.createTextNode("linea de presupuesto")]),
     svgNode("path", {
       d: path,
@@ -2853,32 +3002,9 @@ function renderProjectionPlane(selector, summary) {
       "stroke-linecap": "round",
       "stroke-linejoin": "round",
     }),
-    ...positioned.flatMap((point) => [
-      svgNode("circle", {
-        cx: point.x,
-        cy: point.y,
-        r: "8",
-        fill: point.color,
-        stroke: "#ffffff",
-        "stroke-width": "3",
-      }),
-      svgNode("text", {
-        x: point.x,
-        y: height - 22,
-        "text-anchor": "middle",
-        fill: "#65736f",
-        "font-size": "12",
-        "font-weight": "800",
-      }, [document.createTextNode(point.label)]),
-      svgNode("text", {
-        x: point.x,
-        y: Math.max(18, point.y - 14),
-        "text-anchor": "middle",
-        fill: point.color,
-        "font-size": "12",
-        "font-weight": "900",
-      }, [document.createTextNode(money(point.value).replace(",00", ""))]),
-    ]),
+    ...positioned.map((point, index) =>
+      renderProjectionPoint(point, index, positioned.length, height, padding),
+    ),
   ]);
 
   container.replaceChildren(svg);
@@ -3198,9 +3324,17 @@ function renderPartnerCard(partner) {
 }
 
 function renderPartners() {
+  const partners = activeProjectPartners();
   replaceChildren(
     "#partnersCards",
-    scopedPartners().map((partner) => renderPartnerCard(partner)),
+    partners.length
+      ? partners.map((partner) => renderPartnerCard(partner))
+      : [
+          el("div", {
+            class: "empty-state",
+            text: "Selecciona o crea un proyecto para ver solo sus socios.",
+          }),
+        ],
   );
 }
 
@@ -3416,8 +3550,10 @@ function renderEventControlPanel(project, movements, partners) {
     ),
     renderEventMetric(
       "Punto de equilibrio",
-      percentLabel(summary.breakeven),
-      summary.revenueGap ? `faltan ventas por ${money(summary.revenueGap)}` : "ventas cubren costos",
+      money(summary.breakevenAmount),
+      summary.revenueGap
+        ? `faltan ventas por ${money(summary.revenueGap)}`
+        : `cubierto ${percentLabel(summary.breakeven)}`,
       summary.revenueGap ? "warning" : "good",
     ),
     renderEventMetric(
@@ -4375,7 +4511,7 @@ function buildEventReportLines(summary) {
     "CONTROL DEL EVENTO EN MARCHA",
     `Costo fijo/meta: ${money(summary.costTarget)} | Base sin IVA: ${money(summary.subtotalNoIva)} | IVA estimado 15%: ${money(summary.ivaEstimated)} | Imprevistos 5%: ${money(summary.contingency)}`,
     `Venta total esperada: ${money(summary.incomeExpected)} | Cobrado real: ${money(summary.incomeReal)} | Capital socios/inversion: ${money(summary.capitalBase)}`,
-    `Utilidad esperada: ${money(summary.profitExpected)} | Utilidad real registrada: ${money(summary.profitReal)} | Margen esperado: ${percentLabel(summary.marginExpected)} | Punto de equilibrio: ${percentLabel(summary.breakeven)}`,
+    `Utilidad esperada: ${money(summary.profitExpected)} | Utilidad real registrada: ${money(summary.profitReal)} | Margen esperado: ${percentLabel(summary.marginExpected)} | Punto de equilibrio: ${money(summary.breakevenAmount)} | Cobertura: ${percentLabel(summary.breakeven)}`,
     summary.revenueGap
       ? `Brecha comercial: faltan ventas por ${money(summary.revenueGap)} para cubrir costo fijo.`
       : "Brecha comercial: la venta esperada cubre el costo fijo registrado.",
@@ -4811,7 +4947,8 @@ function buildExecutiveReportPage(projectId = summaryProjectId()) {
     ? [
         ["Venta evento", money(eventIncomeExpected), PIE_COLORS[1]],
         ["Utilidad evento", money(eventProfitExpected), eventProfitExpected < 0 ? "#d95f43" : "#0f766e"],
-        ["Equilibrio evento", percentLabel(eventBreakeven), eventBreakeven >= 100 ? "#0f766e" : "#f2b84b"],
+        ["Pto equilibrio", money(eventCostTarget), "#d95f43"],
+        ["Cobertura evento", percentLabel(eventBreakeven), eventBreakeven >= 100 ? "#0f766e" : "#f2b84b"],
       ]
     : [];
   const cards = [
