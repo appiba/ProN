@@ -142,8 +142,8 @@ test("ships the GitHub Pages and Apps Script integration", async () => {
   assert.match(index, /Crear usuario/);
   assert.match(index, /Usuario de acceso/);
   assert.match(index, /Clave de acceso/);
-  assert.match(index, /20260818-budget-inline/);
-  assert.doesNotMatch(index, /20260807-vinilos-socios|20260807-editable-projects|20260807-editable-sync/);
+  assert.match(index, /20260818-partner-sync/);
+  assert.doesNotMatch(index, /20260807-vinilos-socios|20260807-editable-projects|20260807-editable-sync|20260818-budget-inline/);
   assert.match(index, /detailEditProjectButton/);
   assert.match(index, /detailBudgetInlineForm/);
   assert.match(index, /detailBudgetInlineCancel/);
@@ -176,6 +176,11 @@ test("ships the GitHub Pages and Apps Script integration", async () => {
   assert.match(pages, /update-project/);
   assert.match(pages, /submitOptimisticAction/);
   assert.match(pages, /openBudgetInlineEditor/);
+  assert.match(pages, /PENDING_LOCAL_CHANGES_KEY/);
+  assert.match(pages, /setPendingLocalChanges/);
+  assert.match(pages, /remoteDataIncludesAction/);
+  assert.match(pages, /partnerMatchesPayload/);
+  assert.match(pages, /hasRemoteRowsExtra/);
   assert.match(pages, /update-movement/);
   assert.match(pages, /update-partner/);
   assert.match(pages, /update-inventory/);

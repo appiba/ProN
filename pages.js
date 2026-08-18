@@ -6,6 +6,7 @@ const TOKEN_KEY = "pron_session_token";
 const SESSION_USER_KEY = "pron_session_user";
 const CLEAN_START_VERSION = "pron-clean-start-20260803-v1";
 const LOCAL_DB_KEY = "pron_local_database_clean_v1";
+const PENDING_LOCAL_CHANGES_KEY = "pron_pending_local_changes";
 const LOCAL_TOKEN_PREFIX = "local-";
 const SUPERADMIN_EMAIL_SHA256 =
   "88e0ce076c34f4b41124bf348680fcaf025f8bda0e1e13ad7339be6d6f359cec";
@@ -171,6 +172,7 @@ const state = {
   backend: "checking",
   loginSyncId: 0,
   loginCredentials: null,
+  hasPendingLocalChanges: localStorage.getItem(PENDING_LOCAL_CHANGES_KEY) === "true",
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -195,6 +197,15 @@ function loadLocalData() {
 
 function saveLocalData() {
   localStorage.setItem(LOCAL_DB_KEY, JSON.stringify(state.data));
+}
+
+function setPendingLocalChanges(hasChanges) {
+  state.hasPendingLocalChanges = hasChanges;
+  if (hasChanges) {
+    localStorage.setItem(PENDING_LOCAL_CHANGES_KEY, "true");
+  } else {
+    localStorage.removeItem(PENDING_LOCAL_CHANGES_KEY);
+  }
 }
 
 async function sha256Hex(value) {
@@ -940,6 +951,21 @@ function syncLoginInBackground(credentials, syncId) {
       }
 
       remoteData = await mergeLocalSnapshotIfNeeded(localSnapshot, remoteData);
+      if (
+        state.hasPendingLocalChanges &&
+        hasBusinessData(localSnapshot) &&
+        hasSharedDataDifference(localSnapshot, remoteData)
+      ) {
+        state.data = localSnapshot;
+        state.backend = "retry";
+        saveLocalData();
+        render();
+        updateConnection("Datos de este navegador", "local");
+        return;
+      }
+      if (state.hasPendingLocalChanges) {
+        setPendingLocalChanges(false);
+      }
       state.data = remoteData;
       state.selectedProjectId = state.data.projects.some((project) => project.id === currentProjectId)
         ? currentProjectId
@@ -1009,8 +1035,26 @@ async function login(event) {
     state.user = result.user;
     sessionStorage.setItem(TOKEN_KEY, result.token);
     sessionStorage.setItem(SESSION_USER_KEY, JSON.stringify(state.user));
+    const localSnapshot = normalizeData(cloneData(state.data));
     const dataResult = await callBackend("get-data");
-    const remoteData = normalizeRemoteData(dataResult.data);
+    let remoteData = normalizeRemoteData(dataResult.data);
+    if (state.hasPendingLocalChanges && remoteData) {
+      remoteData = await mergeLocalSnapshotIfNeeded(localSnapshot, remoteData);
+      if (hasBusinessData(localSnapshot) && hasSharedDataDifference(localSnapshot, remoteData)) {
+        state.data = localSnapshot;
+        saveLocalData();
+        $("#loginForm").reset();
+        showDashboard();
+        setMessage(
+          "Entraste con tus cambios pendientes guardados aqui; el respaldo central aun no devolvio esos cambios.",
+          "warning",
+        );
+        updateConnection("Datos de este navegador", "local");
+        setBusy(false);
+        return;
+      }
+      setPendingLocalChanges(false);
+    }
     if (remoteData) {
       state.data = remoteData;
       saveLocalData();
@@ -1054,8 +1098,21 @@ async function refreshData() {
       remoteData = await mergeLocalSnapshotIfNeeded(localSnapshot, remoteData);
 
       if (remoteData) {
+        if (hasSharedDataDifference(localSnapshot, remoteData)) {
+          state.data = localSnapshot;
+          saveLocalData();
+          setPendingLocalChanges(true);
+          setMessage(
+            "Tus cambios siguen aqui. El respaldo central aun no devolvio exactamente esos datos.",
+            "warning",
+          );
+          updateConnection("Datos de este navegador", "local");
+          render();
+          return;
+        }
         state.data = remoteData;
         saveLocalData();
+        setPendingLocalChanges(false);
       }
 
       state.backend = "ready";
@@ -1079,8 +1136,9 @@ async function refreshData() {
   updateConnection("Actualizando", "checking");
 
   try {
+    const localSnapshot = normalizeData(cloneData(state.data));
     const result = await callBackend("get-data");
-    const remoteData = normalizeRemoteData(result.data);
+    let remoteData = normalizeRemoteData(result.data);
     if (!remoteData) {
       state.backend = "ready";
       setMessage("Panel limpio listo.");
@@ -1089,7 +1147,24 @@ async function refreshData() {
       return;
     }
 
+    if (state.hasPendingLocalChanges) {
+      remoteData = await mergeLocalSnapshotIfNeeded(localSnapshot, remoteData);
+      if (hasSharedDataDifference(localSnapshot, remoteData)) {
+        state.data = localSnapshot;
+        saveLocalData();
+        setMessage(
+          "Tus cambios siguen guardados aqui. El respaldo central todavia no devolvio exactamente esos cambios; no se bajaron datos viejos.",
+          "warning",
+        );
+        updateConnection("Datos de este navegador", "local");
+        render();
+        return;
+      }
+      setPendingLocalChanges(false);
+    }
+
     state.data = remoteData;
+    saveLocalData();
     state.backend = "ready";
     setMessage("Informacion actualizada.");
     updateConnection("Sistema activo", "ok");
@@ -1125,6 +1200,7 @@ async function resumeSession() {
   }
 
   try {
+    const localSnapshot = normalizeData(cloneData(state.data));
     const result = await callBackend("get-data");
     state.user = result.user || {
       name: "Administrador General",
@@ -1134,9 +1210,25 @@ async function resumeSession() {
       projectId: null,
     };
     sessionStorage.setItem(SESSION_USER_KEY, JSON.stringify(state.user));
-    const remoteData = normalizeRemoteData(result.data);
+    let remoteData = normalizeRemoteData(result.data);
+    if (state.hasPendingLocalChanges && remoteData) {
+      remoteData = await mergeLocalSnapshotIfNeeded(localSnapshot, remoteData);
+      if (hasBusinessData(localSnapshot) && hasSharedDataDifference(localSnapshot, remoteData)) {
+        state.data = localSnapshot;
+        state.backend = "retry";
+        showDashboard();
+        setMessage(
+          "Tus cambios pendientes siguen aqui; no se bajaron datos viejos del respaldo central.",
+          "warning",
+        );
+        updateConnection("Datos de este navegador", "local");
+        return;
+      }
+      setPendingLocalChanges(false);
+    }
     if (remoteData) {
       state.data = remoteData;
+      saveLocalData();
     }
     state.backend = "ready";
     showDashboard();
@@ -1155,6 +1247,7 @@ async function submitAction(action, payload, successMessage) {
     setBusy(true);
     applyLocalAction(action, payload);
     saveLocalData();
+    setPendingLocalChanges(true);
     if (!isLocalSession()) {
       try {
         const mergeResult = await callBackend("merge-local-data", {
@@ -1164,6 +1257,7 @@ async function submitAction(action, payload, successMessage) {
         if (mergedData) {
           state.data = mergedData;
           saveLocalData();
+          setPendingLocalChanges(false);
         }
         state.backend = "ready";
         setMessage(`${successMessage} Datos guardados en el respaldo central.`);
@@ -1194,6 +1288,7 @@ async function submitAction(action, payload, successMessage) {
     } else {
       applyLocalAction(action, payload);
       saveLocalData();
+      setPendingLocalChanges(true);
     }
     state.backend = "ready";
     if (!state.data.projects.some((project) => project.id === state.selectedProjectId)) {
@@ -1230,6 +1325,7 @@ async function submitAction(action, payload, successMessage) {
     }
     applyLocalAction(action, payload);
     saveLocalData();
+    setPendingLocalChanges(true);
     setMessage(
       `${successMessage} Quedo guardado en este navegador; pulsa Actualizar para compartirlo desde el link cuando el sistema central responda.`,
       "warning",
@@ -1245,6 +1341,7 @@ async function submitOptimisticAction(action, payload, successMessage) {
   setBusy(true);
   applyLocalAction(action, payload);
   saveLocalData();
+  setPendingLocalChanges(true);
   const localSnapshot = normalizeData(cloneData(state.data));
   setMessage(`${successMessage} Actualizando tablero...`);
   render();
@@ -1268,6 +1365,7 @@ async function submitOptimisticAction(action, payload, successMessage) {
     }
     state.data = mergedData;
     saveLocalData();
+    setPendingLocalChanges(false);
     state.backend = "ready";
     setMessage(`${successMessage} Datos guardados en el respaldo central.`);
     updateConnection("Sistema activo", "ok");
@@ -1281,6 +1379,7 @@ async function submitOptimisticAction(action, payload, successMessage) {
       }
       state.data = remoteData;
       saveLocalData();
+      setPendingLocalChanges(false);
       state.backend = "ready";
       setMessage(`${successMessage} Datos guardados en el respaldo central.`);
       updateConnection("Sistema activo", "ok");
@@ -1299,12 +1398,44 @@ async function submitOptimisticAction(action, payload, successMessage) {
       }
       state.data = localSnapshot;
       saveLocalData();
+      setPendingLocalChanges(true);
       updateConnection("Datos de este navegador", "local");
       render();
     }
   } finally {
     setBusy(false);
   }
+}
+
+function sameTextValue(left, right) {
+  return String(left || "").trim() === String(right || "").trim();
+}
+
+function sameNumericValue(left, right) {
+  return Math.abs(numberValue(left) - numberValue(right)) < 0.01;
+}
+
+function partnerMatchesPayload(partner, payload) {
+  return Boolean(partner) &&
+    sameTextValue(partner.projectId, payload.projectId) &&
+    sameTextValue(partner.name, payload.name) &&
+    sameTextValue(partner.type || "Socio", payload.type || "Socio") &&
+    sameNumericValue(partner.contribution, payload.contribution) &&
+    sameNumericValue(partner.participation, payload.participation) &&
+    sameTextValue(partner.status || "Activo", payload.status || "Activo");
+}
+
+function projectMatchesPayload(project, payload) {
+  return Boolean(project) &&
+    sameTextValue(project.name, payload.name) &&
+    sameTextValue(project.type || "Proyecto personalizado", payload.type || "Proyecto personalizado") &&
+    sameTextValue(project.status || "En revision", payload.status || "En revision") &&
+    sameNumericValue(project.budget, payload.budget) &&
+    sameTextValue(project.objective || "", payload.objective || "");
+}
+
+function rowIsDeleted(collection, id, data) {
+  return !data[collection].some((row) => String(row.id) === String(id));
 }
 
 function remoteDataIncludesAction(action, payload, data) {
@@ -1314,9 +1445,41 @@ function remoteDataIncludesAction(action, payload, data) {
 
   if (action === "update-project") {
     const project = data.projects.find((item) => item.id === payload.projectId);
-    return Boolean(project) &&
-      Math.abs(numberValue(project.budget) - numberValue(payload.budget)) < 0.01 &&
-      String(project.name || "") === String(payload.name || project.name || "");
+    return projectMatchesPayload(project, payload);
+  }
+
+  if (action === "update-project-status") {
+    const project = data.projects.find((item) => item.id === payload.projectId);
+    return Boolean(project) && sameTextValue(project.status, payload.status);
+  }
+
+  if (action === "create-partner") {
+    return data.partners.some((partner) => partnerMatchesPayload(partner, payload));
+  }
+
+  if (action === "update-partner") {
+    const partner = data.partners.find((item) => item.id === payload.partnerId);
+    return partnerMatchesPayload(partner, payload);
+  }
+
+  if (action === "delete-project") {
+    return rowIsDeleted("projects", payload.projectId, data);
+  }
+
+  if (action === "delete-movement") {
+    return rowIsDeleted("movements", payload.movementId, data);
+  }
+
+  if (action === "delete-partner") {
+    return rowIsDeleted("partners", payload.partnerId, data);
+  }
+
+  if (action === "delete-inventory") {
+    return rowIsDeleted("inventory", payload.inventoryId, data);
+  }
+
+  if (action === "delete-user") {
+    return rowIsDeleted("users", payload.userId, data);
   }
 
   return true;
@@ -1978,6 +2141,25 @@ function hasLocalRowsChanged(localData, remoteData) {
         JSON.stringify(comparableSharedRow(collection, remoteRow));
     });
   });
+}
+
+function hasRemoteRowsExtra(localData, remoteData) {
+  return ["projects", "movements", "partners", "inventory", "users"].some((collection) => {
+    const localIds = new Set(sharedRows(localData, collection).map(collectionKey));
+    return sharedRows(remoteData, collection).some((row) => {
+      const id = collectionKey(row);
+      return id && !localIds.has(id);
+    });
+  });
+}
+
+function hasSharedDataDifference(localData, remoteData) {
+  return Boolean(
+    !remoteData ||
+      hasLocalRowsMissing(localData, remoteData) ||
+      hasLocalRowsChanged(localData, remoteData) ||
+      hasRemoteRowsExtra(localData, remoteData),
+  );
 }
 
 function hasBusinessData(data = state.data) {
@@ -3756,7 +3938,7 @@ function renderReports() {
 }
 
 function updateProjectStatus(projectId, status, successMessage = "Estado del proyecto actualizado.") {
-  submitAction(
+  submitOptimisticAction(
     "update-project-status",
     {
       projectId,
@@ -4384,7 +4566,7 @@ function retireDetailPartner(partnerId) {
     return;
   }
 
-  submitAction(
+  submitOptimisticAction(
     "update-partner",
     {
       ...partner,
@@ -5856,7 +6038,11 @@ function confirmDelete(question, action, payload, successMessage) {
     return false;
   }
 
-  submitAction(action, payload, successMessage);
+  if (action.startsWith("delete-")) {
+    submitOptimisticAction(action, payload, successMessage);
+  } else {
+    submitAction(action, payload, successMessage);
+  }
   return true;
 }
 
@@ -6115,7 +6301,7 @@ function bindEvents() {
       renderPartnerParticipationControls();
       return;
     }
-    submitAction(
+    submitOptimisticAction(
       "create-partner",
       {
         ...data,
@@ -6143,7 +6329,7 @@ function bindEvents() {
       renderPartnerParticipationControls();
       return;
     }
-    submitAction(
+    submitOptimisticAction(
       isEditing ? "update-partner" : "create-partner",
       {
         ...data,
