@@ -1358,9 +1358,13 @@ async function submitOptimisticAction(action, payload, successMessage) {
   }
 
   try {
-    const mergeResult = await callBackend("merge-local-data", { data: localSnapshot });
-    const mergedData = normalizeRemoteData(mergeResult.data);
-    if (!remoteDataIncludesAction(action, payload, mergedData)) {
+    const dataResult = await callBackend("get-data");
+    const remoteBeforeMerge = normalizeRemoteData(dataResult.data);
+    const mergedData = await syncLocalSnapshotToBackend(localSnapshot, remoteBeforeMerge);
+    if (
+      !remoteDataIncludesAction(action, payload, mergedData) ||
+      hasSharedDataDifference(localSnapshot, mergedData)
+    ) {
       throw new Error("El respaldo no devolvio el cambio aplicado.");
     }
     state.data = mergedData;
@@ -2075,6 +2079,21 @@ function normalizeRemoteData(data) {
 }
 
 const SHARED_DATA_COLLECTIONS = ["projects", "movements", "partners", "inventory", "users", "audit"];
+const DELETE_SYNC_ORDER = ["movements", "partners", "inventory", "users", "projects"];
+const DELETE_ACTION_BY_COLLECTION = {
+  projects: "delete-project",
+  movements: "delete-movement",
+  partners: "delete-partner",
+  inventory: "delete-inventory",
+  users: "delete-user",
+};
+const DELETE_ID_FIELD_BY_COLLECTION = {
+  projects: "projectId",
+  movements: "movementId",
+  partners: "partnerId",
+  inventory: "inventoryId",
+  users: "userId",
+};
 
 function collectionKey(row) {
   return String(row?.id || "");
@@ -2153,6 +2172,14 @@ function hasRemoteRowsExtra(localData, remoteData) {
   });
 }
 
+function remoteRowsMissingLocally(localData, remoteData, collection) {
+  const localIds = new Set(sharedRows(localData, collection).map(collectionKey));
+  return sharedRows(remoteData, collection).filter((row) => {
+    const id = collectionKey(row);
+    return id && !localIds.has(id);
+  });
+}
+
 function hasSharedDataDifference(localData, remoteData) {
   return Boolean(
     !remoteData ||
@@ -2166,18 +2193,55 @@ function hasBusinessData(data = state.data) {
   return countSharedRows(data) > 0;
 }
 
+async function deleteRemoteRowsMissingLocally(localSnapshot, remoteData) {
+  let remote = normalizeRemoteData(remoteData) || normalizeData(remoteData);
+
+  for (const collection of DELETE_SYNC_ORDER) {
+    const action = DELETE_ACTION_BY_COLLECTION[collection];
+    const idField = DELETE_ID_FIELD_BY_COLLECTION[collection];
+
+    for (const row of remoteRowsMissingLocally(localSnapshot, remote, collection)) {
+      if (collection === "users" && row.id === "usr-owner") {
+        continue;
+      }
+
+      try {
+        const result = await callBackend(action, { [idField]: row.id });
+        remote = normalizeRemoteData(result.data) || remote;
+      } catch (error) {
+        if (!/Registro no encontrado|No hay datos/i.test(error.message || "")) {
+          throw error;
+        }
+      }
+    }
+  }
+
+  return remote;
+}
+
+async function syncLocalSnapshotToBackend(localSnapshot, remoteData) {
+  let remote = normalizeRemoteData(remoteData) || normalizeData(remoteData);
+  const result = await callBackend("merge-local-data", { data: localSnapshot });
+  remote = normalizeRemoteData(result.data) || remote;
+
+  if (hasRemoteRowsExtra(localSnapshot, remote)) {
+    remote = await deleteRemoteRowsMissingLocally(localSnapshot, remote);
+  }
+
+  return remote;
+}
+
 async function mergeLocalSnapshotIfNeeded(localSnapshot, remoteData) {
   if (
     !remoteData ||
     !hasBusinessData(localSnapshot) ||
-    (!hasLocalRowsMissing(localSnapshot, remoteData) && !hasLocalRowsChanged(localSnapshot, remoteData))
+    !hasSharedDataDifference(localSnapshot, remoteData)
   ) {
     return remoteData;
   }
 
   try {
-    const result = await callBackend("merge-local-data", { data: localSnapshot });
-    return normalizeRemoteData(result.data) || remoteData;
+    return syncLocalSnapshotToBackend(localSnapshot, remoteData);
   } catch {
     return replayLocalRowsToLegacyBackend(localSnapshot, remoteData);
   }

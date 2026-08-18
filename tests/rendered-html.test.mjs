@@ -142,8 +142,8 @@ test("ships the GitHub Pages and Apps Script integration", async () => {
   assert.match(index, /Crear usuario/);
   assert.match(index, /Usuario de acceso/);
   assert.match(index, /Clave de acceso/);
-  assert.match(index, /20260818-partner-sync/);
-  assert.doesNotMatch(index, /20260807-vinilos-socios|20260807-editable-projects|20260807-editable-sync|20260818-budget-inline/);
+  assert.match(index, /20260818-central-sync/);
+  assert.doesNotMatch(index, /20260807-vinilos-socios|20260807-editable-projects|20260807-editable-sync|20260818-budget-inline|20260818-partner-sync/);
   assert.match(index, /detailEditProjectButton/);
   assert.match(index, /detailBudgetInlineForm/);
   assert.match(index, /detailBudgetInlineCancel/);
@@ -199,6 +199,9 @@ test("ships the GitHub Pages and Apps Script integration", async () => {
   assert.match(pages, /merge-local-data/);
   assert.match(pages, /Datos guardados en el respaldo central/);
   assert.match(pages, /mergeLocalSnapshotIfNeeded/);
+  assert.match(pages, /syncLocalSnapshotToBackend/);
+  assert.match(pages, /deleteRemoteRowsMissingLocally/);
+  assert.match(pages, /remoteRowsMissingLocally/);
   assert.match(pages, /isRemoteDataShape/);
   assert.match(pages, /pruneLegacySeedRows/);
   assert.match(pages, /replayLocalRowsToLegacyBackend/);
@@ -271,6 +274,7 @@ test("ships the GitHub Pages and Apps Script integration", async () => {
   assert.match(appsScript, /ContentService\.MimeType\.JAVASCRIPT/);
   assert.match(appsScript, /deleteProject_/);
   assert.match(appsScript, /mergeLocalData_/);
+  assert.match(appsScript, /pruneObjectsMissingFromSnapshot_/);
   assert.match(appsScript, /upsertObjects_/);
   assert.match(appsScript, /updateProject_/);
   assert.match(appsScript, /updateMovement_/);

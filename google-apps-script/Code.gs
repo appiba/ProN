@@ -651,6 +651,12 @@ function deleteUser_(payload) {
 function mergeLocalData_(payload) {
   var data = payload.data || {};
 
+  pruneObjectsMissingFromSnapshot_("Movements", data.movements);
+  pruneObjectsMissingFromSnapshot_("Partners", data.partners);
+  pruneObjectsMissingFromSnapshot_("Inventory", data.inventory);
+  pruneObjectsMissingFromSnapshot_("Users", data.users, true);
+  pruneObjectsMissingFromSnapshot_("Projects", data.projects);
+
   upsertObjects_("Projects", data.projects, function (row) {
     return {
       id: text_(row.id),
@@ -739,6 +745,28 @@ function mergeLocalData_(payload) {
   });
 
   audit_("Datos compartidos", "Se subieron registros locales al respaldo central.", "");
+}
+
+function pruneObjectsMissingFromSnapshot_(sheetName, rows, keepOwner) {
+  if (!Array.isArray(rows)) {
+    return;
+  }
+
+  var ids = {};
+  rows.forEach(function (row) {
+    var id = text_(row && row.id);
+    if (id) {
+      ids[id] = true;
+    }
+  });
+
+  readObjects_(sheetName).forEach(function (row) {
+    var id = text_(row.id);
+    if (!id || (keepOwner && id === "usr-owner") || ids[id]) {
+      return;
+    }
+    deleteRowsByColumnValue_(sheetName, "id", id);
+  });
 }
 
 function loadData_() {
