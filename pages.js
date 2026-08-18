@@ -214,7 +214,34 @@ function money(value) {
 }
 
 function numberValue(value) {
-  const parsed = Number(String(value || "").replace(",", "."));
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : 0;
+  }
+
+  const raw = String(value || "")
+    .trim()
+    .replace(/\s/g, "")
+    .replace(/[^\d,.-]/g, "");
+
+  if (!raw) {
+    return 0;
+  }
+
+  let normalized = raw;
+  const hasComma = normalized.includes(",");
+  const hasDot = normalized.includes(".");
+
+  if (hasComma && hasDot) {
+    normalized = normalized.replace(/\./g, "").replace(",", ".");
+  } else if (hasComma) {
+    normalized = normalized.replace(",", ".");
+  } else if ((normalized.match(/\./g) || []).length > 1) {
+    normalized = normalized.replace(/\./g, "");
+  } else if (/^-?\d{1,3}\.\d{3}$/.test(normalized)) {
+    normalized = normalized.replace(".", "");
+  }
+
+  const parsed = Number(normalized);
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
@@ -1212,6 +1239,87 @@ async function submitAction(action, payload, successMessage) {
   } finally {
     setBusy(false);
   }
+}
+
+async function submitOptimisticAction(action, payload, successMessage) {
+  setBusy(true);
+  applyLocalAction(action, payload);
+  saveLocalData();
+  const localSnapshot = normalizeData(cloneData(state.data));
+  setMessage(`${successMessage} Actualizando tablero...`);
+  render();
+
+  if (isLocalSession()) {
+    setMessage(
+      `${successMessage} Quedo guardado en este navegador; pulsa Actualizar para compartirlo desde el link cuando el sistema central responda.`,
+      "warning",
+    );
+    updateConnection("Datos de este navegador", "local");
+    setBusy(false);
+    render();
+    return;
+  }
+
+  try {
+    const mergeResult = await callBackend("merge-local-data", { data: localSnapshot });
+    const mergedData = normalizeRemoteData(mergeResult.data);
+    if (!remoteDataIncludesAction(action, payload, mergedData)) {
+      throw new Error("El respaldo no devolvio el cambio aplicado.");
+    }
+    state.data = mergedData;
+    saveLocalData();
+    state.backend = "ready";
+    setMessage(`${successMessage} Datos guardados en el respaldo central.`);
+    updateConnection("Sistema activo", "ok");
+    render();
+  } catch {
+    try {
+      const result = await callBackend(action, payload);
+      const remoteData = normalizeRemoteData(result.data);
+      if (!remoteDataIncludesAction(action, payload, remoteData)) {
+        throw new Error("El respaldo no devolvio el cambio aplicado.");
+      }
+      state.data = remoteData;
+      saveLocalData();
+      state.backend = "ready";
+      setMessage(`${successMessage} Datos guardados en el respaldo central.`);
+      updateConnection("Sistema activo", "ok");
+      render();
+    } catch (error) {
+      if (/sesion/i.test(error.message)) {
+        setMessage(
+          `${successMessage} Quedo guardado en este navegador. Entra de nuevo y pulsa Actualizar para subirlo al respaldo central.`,
+          "warning",
+        );
+      } else {
+        setMessage(
+          `${successMessage} Quedo guardado en este navegador; pulsa Actualizar para compartirlo desde el link cuando el sistema central responda.`,
+          "warning",
+        );
+      }
+      state.data = localSnapshot;
+      saveLocalData();
+      updateConnection("Datos de este navegador", "local");
+      render();
+    }
+  } finally {
+    setBusy(false);
+  }
+}
+
+function remoteDataIncludesAction(action, payload, data) {
+  if (!data) {
+    return false;
+  }
+
+  if (action === "update-project") {
+    const project = data.projects.find((item) => item.id === payload.projectId);
+    return Boolean(project) &&
+      Math.abs(numberValue(project.budget) - numberValue(payload.budget)) < 0.01 &&
+      String(project.name || "") === String(payload.name || project.name || "");
+  }
+
+  return true;
 }
 
 function isValidationError(error) {
@@ -4078,6 +4186,111 @@ function updateBudgetChangePreview() {
   }
 }
 
+function projectUpdatePayload(project, updates = {}) {
+  return {
+    projectId: project.id,
+    name: String(updates.name || project.name || "").trim(),
+    type: updates.type || project.type || "Proyecto personalizado",
+    status: PROJECT_STATUSES.includes(updates.status) ? updates.status : projectStatus(project),
+    budget: numberValue(Object.prototype.hasOwnProperty.call(updates, "budget") ? updates.budget : project.budget),
+    objective: String(updates.objective || project.objective || "").trim(),
+    reason: String(updates.reason || "Actualizacion directa del proyecto").trim(),
+  };
+}
+
+function syncBudgetInlineEditor(project) {
+  const card = $(".budget-inline-card");
+  const form = $("#detailBudgetInlineForm");
+  if (!card || !form || !project) {
+    return;
+  }
+
+  const isEditing = !form.hidden && form.elements.projectId.value === project.id;
+  form.elements.projectId.value = project.id;
+  if (!isEditing) {
+    form.elements.budget.value = numberValue(project.budget) || "";
+    form.elements.reason.value = "";
+  }
+  card.classList.toggle("editing", isEditing);
+  setTextIfExists("#detailBudgetInlineHint", isEditing ? "Editando aqui" : "Editar aqui");
+  updateBudgetInlinePreview();
+}
+
+function openBudgetInlineEditor() {
+  const project = projectById(state.detailProjectId || state.selectedProjectId);
+  const card = $(".budget-inline-card");
+  const form = $("#detailBudgetInlineForm");
+  if (!project || !card || !form) {
+    return;
+  }
+
+  form.hidden = false;
+  form.elements.projectId.value = project.id;
+  form.elements.budget.value = numberValue(project.budget) || "";
+  form.elements.reason.value = "";
+  card.classList.add("editing");
+  setTextIfExists("#detailBudgetInlineHint", "Editando aqui");
+  updateBudgetInlinePreview();
+  form.elements.budget.focus();
+  form.elements.budget.select();
+}
+
+function closeBudgetInlineEditor() {
+  const form = $("#detailBudgetInlineForm");
+  const card = $(".budget-inline-card");
+  if (!form || !card) {
+    return;
+  }
+
+  form.hidden = true;
+  card.classList.remove("editing");
+  const project = projectById(state.detailProjectId || state.selectedProjectId);
+  if (project) {
+    syncBudgetInlineEditor(project);
+  }
+}
+
+function updateBudgetInlinePreview() {
+  const form = $("#detailBudgetInlineForm");
+  const preview = $("#detailBudgetInlinePreview");
+  const project = projectById(form?.elements.projectId?.value);
+  if (!form || !preview || !project) {
+    return;
+  }
+
+  const previousBudget = numberValue(project.budget);
+  const nextBudget = numberValue(form.elements.budget.value);
+  const delta = nextBudget - previousBudget;
+  const originalDelta = nextBudget - projectInitialBudget(project);
+  preview.textContent =
+    `Actual ${money(previousBudget)} | Nuevo ${money(nextBudget)} | Variacion ${money(delta)} | Contra inicial ${money(originalDelta)}`;
+}
+
+async function submitBudgetInlineUpdate(event) {
+  event.preventDefault();
+  event.stopPropagation();
+
+  const form = event.currentTarget;
+  const project = projectById(form.elements.projectId.value);
+  if (!project) {
+    setMessage("Abre un proyecto para editar el presupuesto.", "warning");
+    return;
+  }
+
+  const nextBudget = numberValue(form.elements.budget.value);
+  if (nextBudget < 0) {
+    setMessage("El presupuesto no puede ser negativo.", "warning");
+    return;
+  }
+
+  const payload = projectUpdatePayload(project, {
+    budget: nextBudget,
+    reason: form.elements.reason.value || "Actualizacion del presupuesto desde la tarjeta",
+  });
+  closeBudgetInlineEditor();
+  await submitOptimisticAction("update-project", payload, "Presupuesto actualizado.");
+}
+
 function clearDetailMovementEditMode() {
   const form = $("#detailMovementForm");
   if (!form) {
@@ -4218,7 +4431,7 @@ function editDetailInventory(inventoryId) {
 
 function focusDetailTarget(target) {
   if (target === "budget") {
-    toggleProjectEditPanel(true);
+    openBudgetInlineEditor();
     return;
   }
 
@@ -4321,6 +4534,7 @@ function renderProjectDetail() {
   setTextIfExists("#detailInvestment", money(current.investment));
   setTextIfExists("#detailExpenses", money(current.expenses));
   setTextIfExists("#detailArchiveButton", projectStatus(project) === "Archivado" ? "Restaurar" : "Archivar");
+  syncBudgetInlineEditor(project);
   renderProjectEditPanel(project, current, movements);
   renderProjectStatusPanel(project);
   renderEventControlPanel(project, movements, partners);
@@ -5696,10 +5910,25 @@ function bindEvents() {
   $("#detailProjectEditCancelButton").addEventListener("click", () => toggleProjectEditPanel(false));
   $("#detailProjectEditForm").elements.budget.addEventListener("input", updateBudgetChangePreview);
   $("#detailProjectEditForm").elements.status.addEventListener("change", updateBudgetChangePreview);
+  $("#detailBudgetInlineForm").addEventListener("click", (event) => event.stopPropagation());
+  $("#detailBudgetInlineForm").addEventListener("submit", submitBudgetInlineUpdate);
+  $("#detailBudgetInlineForm").elements.budget.addEventListener("input", updateBudgetInlinePreview);
+  $("#detailBudgetInlineCancel").addEventListener("click", (event) => {
+    event.stopPropagation();
+    closeBudgetInlineEditor();
+  });
   $$(".interactive-kpi").forEach((card) => {
     const openTarget = () => focusDetailTarget(card.dataset.detailTarget);
-    card.addEventListener("click", openTarget);
+    card.addEventListener("click", (event) => {
+      if (event.target.closest("form")) {
+        return;
+      }
+      openTarget();
+    });
     card.addEventListener("keydown", (event) => {
+      if (event.target.closest("form")) {
+        return;
+      }
       if (event.key === "Enter" || event.key === " ") {
         event.preventDefault();
         openTarget();
@@ -5806,12 +6035,12 @@ function bindEvents() {
       return;
     }
 
-    submitAction(
+    submitOptimisticAction(
       "update-project",
-      {
+      projectUpdatePayload(project, {
         ...data,
         budget: nextBudget,
-      },
+      }),
       "Proyecto actualizado.",
     );
   });

@@ -9,7 +9,7 @@
       content="ERP dashboard en espanol para negocios, proyectos, eventos, finanzas, socios, inventario y usuarios."
     />
     <link rel="icon" href="public/favicon.svg" />
-    <link rel="stylesheet" href="pages.css?v=20260807-editable-projects" />
+    <link rel="stylesheet" href="pages.css?v=20260818-budget-inline" />
   </head>
   <body>
     <section id="loginScreen" class="login-screen">
@@ -546,10 +546,33 @@
             </header>
 
             <section class="metrics compact-metrics" aria-label="Indicadores del proyecto">
-              <article class="interactive-kpi" data-detail-target="budget" tabindex="0">
-                <span>Presupuesto</span>
+              <article class="interactive-kpi budget-inline-card" data-detail-target="budget" tabindex="0">
+                <div class="kpi-card-head">
+                  <span>Presupuesto</span>
+                  <small id="detailBudgetInlineHint">Editar aqui</small>
+                </div>
                 <strong id="detailBudget">$0,00</strong>
-                <small>Ver / Editar</small>
+                <form id="detailBudgetInlineForm" class="inline-kpi-form" hidden>
+                  <input name="projectId" type="hidden" />
+                  <label>
+                    Presupuesto actual
+                    <input name="budget" inputmode="decimal" placeholder="Ej. 18000" required />
+                  </label>
+                  <label>
+                    Motivo
+                    <input
+                      name="reason"
+                      placeholder="Ej. aumento produccion, permisos o capital requerido"
+                    />
+                  </label>
+                  <div id="detailBudgetInlinePreview" class="inline-kpi-preview"></div>
+                  <div class="inline-kpi-actions">
+                    <button type="submit">Guardar presupuesto</button>
+                    <button id="detailBudgetInlineCancel" class="ghost-button" type="button">
+                      Cancelar
+                    </button>
+                  </div>
+                </form>
               </article>
               <article class="interactive-kpi" data-detail-target="income" tabindex="0">
                 <span>Ingresos</span>
@@ -952,6 +975,6 @@
       </section>
     </main>
 
-    <script src="pages.js?v=20260807-editable-sync"></script>
+    <script src="pages.js?v=20260818-budget-inline"></script>
   </body>
 </html>
