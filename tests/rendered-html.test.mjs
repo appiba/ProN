@@ -143,6 +143,7 @@ test("ships the GitHub Pages and Apps Script integration", async () => {
   assert.match(index, /Usuario de acceso/);
   assert.match(index, /Clave de acceso/);
   assert.match(index, /20260807-editable-projects/);
+  assert.doesNotMatch(index, /20260807-vinilos-socios/);
   assert.match(index, /detailEditProjectButton/);
   assert.match(index, /detailProjectEditForm/);
   assert.match(index, /budgetChangePreview/);
