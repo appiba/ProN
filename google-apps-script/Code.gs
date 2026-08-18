@@ -1,5 +1,6 @@
 var CONFIG = {
   APP_NAME: "ProN",
+  SCRIPT_VERSION: "20260818-central-status",
   SHEET_ID: "1KCzz2B59PN3IvcyM2_G2uvTi8nA759oV7rUsaXvrcSY",
   TIMEZONE: "America/Guayaquil",
   CURRENCY: "USD",
@@ -104,6 +105,7 @@ function handlePayload_(payload) {
     return {
       ok: true,
       app: CONFIG.APP_NAME,
+      version: CONFIG.SCRIPT_VERSION,
       sheetId: CONFIG.SHEET_ID,
       timezone: CONFIG.TIMEZONE,
     };
@@ -1222,6 +1224,8 @@ function parseGetPayload_(e) {
 }
 
 function respond_(payload, callback) {
+  payload = versionedPayload_(payload);
+
   if (callback) {
     var name = callbackName_(callback);
     return ContentService.createTextOutput(name + "(" + JSON.stringify(payload) + ");")
@@ -1230,6 +1234,14 @@ function respond_(payload, callback) {
 
   return ContentService.createTextOutput(JSON.stringify(payload))
     .setMimeType(ContentService.MimeType.JSON);
+}
+
+function versionedPayload_(payload) {
+  var next = payload || {};
+  if (next.ok !== false && !next.version) {
+    next.version = CONFIG.SCRIPT_VERSION;
+  }
+  return next;
 }
 
 function json_(payload) {

@@ -142,8 +142,8 @@ test("ships the GitHub Pages and Apps Script integration", async () => {
   assert.match(index, /Crear usuario/);
   assert.match(index, /Usuario de acceso/);
   assert.match(index, /Clave de acceso/);
-  assert.match(index, /20260818-central-sync/);
-  assert.doesNotMatch(index, /20260807-vinilos-socios|20260807-editable-projects|20260807-editable-sync|20260818-budget-inline|20260818-partner-sync/);
+  assert.match(index, /20260818-central-status/);
+  assert.doesNotMatch(index, /20260807-vinilos-socios|20260807-editable-projects|20260807-editable-sync|20260818-budget-inline|20260818-partner-sync|20260818-central-sync/);
   assert.match(index, /detailEditProjectButton/);
   assert.match(index, /detailBudgetInlineForm/);
   assert.match(index, /detailBudgetInlineCancel/);
@@ -178,6 +178,10 @@ test("ships the GitHub Pages and Apps Script integration", async () => {
   assert.match(pages, /openBudgetInlineEditor/);
   assert.match(pages, /PENDING_LOCAL_CHANGES_KEY/);
   assert.match(pages, /setPendingLocalChanges/);
+  assert.match(pages, /REQUIRED_APPS_SCRIPT_VERSION/);
+  assert.match(pages, /isOutdatedBackendResponse/);
+  assert.match(pages, /backendSyncFailureMessage/);
+  assert.match(pages, /JSONP_TIMEOUT_MS = 60000/);
   assert.match(pages, /remoteDataIncludesAction/);
   assert.match(pages, /partnerMatchesPayload/);
   assert.match(pages, /hasRemoteRowsExtra/);
@@ -268,6 +272,8 @@ test("ships the GitHub Pages and Apps Script integration", async () => {
   assert.doesNotMatch(index, /Correo de invitacion|Enviar invitacion|Invitar usuario/i);
   assert.match(appsScript, /function doGet/);
   assert.match(appsScript, /function doPost/);
+  assert.match(appsScript, /SCRIPT_VERSION/);
+  assert.match(appsScript, /versionedPayload_/);
   assert.match(appsScript, /CLEAN_START_VERSION/);
   assert.match(appsScript, /resetWorkbookData_/);
   assert.match(appsScript, /function parseGetPayload_/);

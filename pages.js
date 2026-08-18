@@ -5,6 +5,7 @@ const SHEET_URL =
 const TOKEN_KEY = "pron_session_token";
 const SESSION_USER_KEY = "pron_session_user";
 const CLEAN_START_VERSION = "pron-clean-start-20260803-v1";
+const REQUIRED_APPS_SCRIPT_VERSION = "20260818-central-status";
 const LOCAL_DB_KEY = "pron_local_database_clean_v1";
 const PENDING_LOCAL_CHANGES_KEY = "pron_pending_local_changes";
 const LOCAL_TOKEN_PREFIX = "local-";
@@ -14,7 +15,7 @@ const PASSWORD_SALT = "pron-apps-script-password-v1";
 const SUPERADMIN_PASSWORD_SHA256 =
   "105682a7333783a9e62bee3a503321582a8df6b9ca899512c1f8f53c3b59803f";
 const USER_PASSWORD_SALT = "pron-user-password-v1";
-const JSONP_TIMEOUT_MS = 15000;
+const JSONP_TIMEOUT_MS = 60000;
 const BACKGROUND_SYNC_DELAY_MS = 50;
 const SUMMARY_ALL = "__all__";
 const PIE_COLORS = ["#0f766e", "#315f9f", "#f2b84b", "#d95f43", "#5b7f67", "#7c5c9e"];
@@ -816,6 +817,12 @@ function jsonpRequest(payload) {
 async function checkBackend() {
   try {
     const result = await callBackend("health", {}, false);
+    if (isOutdatedBackendResponse(result)) {
+      state.backend = "stale";
+      setTextIfExists("#backendStatus", "Apps Script desactualizado");
+      updateConnection("Sin respaldo central", "error");
+      return;
+    }
     state.backend = result.ok ? "ready" : "pending";
     setTextIfExists(
       "#backendStatus",
@@ -938,6 +945,9 @@ function syncLoginInBackground(credentials, syncId) {
       if (syncId !== state.loginSyncId || !state.user) {
         return;
       }
+      if (isOutdatedBackendResponse(dataResult)) {
+        throw new Error("Apps Script publicado desactualizado.");
+      }
 
       const currentProjectId = state.selectedProjectId;
       state.user = dataResult.user || state.user;
@@ -974,10 +984,16 @@ function syncLoginInBackground(credentials, syncId) {
       saveLocalData();
       render();
       updateConnection("Sistema activo", "ok");
-    } catch {
+    } catch (error) {
       if (syncId === state.loginSyncId) {
         state.backend = "retry";
         updateConnection("Datos de este navegador", "local");
+        if (state.hasPendingLocalChanges) {
+          setMessage(
+            backendSyncFailureMessage("Cambios pendientes.", error),
+            "warning",
+          );
+        }
       }
     }
   }, BACKGROUND_SYNC_DELAY_MS);
@@ -1343,7 +1359,7 @@ async function submitOptimisticAction(action, payload, successMessage) {
   saveLocalData();
   setPendingLocalChanges(true);
   const localSnapshot = normalizeData(cloneData(state.data));
-  setMessage(`${successMessage} Actualizando tablero...`);
+  setMessage(`${successMessage} Guardando en respaldo central...`);
   render();
 
   if (isLocalSession()) {
@@ -1359,6 +1375,9 @@ async function submitOptimisticAction(action, payload, successMessage) {
 
   try {
     const dataResult = await callBackend("get-data");
+    if (isOutdatedBackendResponse(dataResult)) {
+      throw new Error("Apps Script publicado desactualizado.");
+    }
     const remoteBeforeMerge = normalizeRemoteData(dataResult.data);
     const mergedData = await syncLocalSnapshotToBackend(localSnapshot, remoteBeforeMerge);
     if (
@@ -1374,9 +1393,12 @@ async function submitOptimisticAction(action, payload, successMessage) {
     setMessage(`${successMessage} Datos guardados en el respaldo central.`);
     updateConnection("Sistema activo", "ok");
     render();
-  } catch {
+  } catch (syncError) {
     try {
       const result = await callBackend(action, payload);
+      if (isOutdatedBackendResponse(result)) {
+        throw new Error("Apps Script publicado desactualizado.");
+      }
       const remoteData = normalizeRemoteData(result.data);
       if (!remoteDataIncludesAction(action, payload, remoteData)) {
         throw new Error("El respaldo no devolvio el cambio aplicado.");
@@ -1389,17 +1411,7 @@ async function submitOptimisticAction(action, payload, successMessage) {
       updateConnection("Sistema activo", "ok");
       render();
     } catch (error) {
-      if (/sesion/i.test(error.message)) {
-        setMessage(
-          `${successMessage} Quedo guardado en este navegador. Entra de nuevo y pulsa Actualizar para subirlo al respaldo central.`,
-          "warning",
-        );
-      } else {
-        setMessage(
-          `${successMessage} Quedo guardado en este navegador; pulsa Actualizar para compartirlo desde el link cuando el sistema central responda.`,
-          "warning",
-        );
-      }
+      setMessage(backendSyncFailureMessage(successMessage, error || syncError), "warning");
       state.data = localSnapshot;
       saveLocalData();
       setPendingLocalChanges(true);
@@ -1491,6 +1503,24 @@ function remoteDataIncludesAction(action, payload, data) {
 
 function isValidationError(error) {
   return /obligatori|positivo|participacion|supera 100/i.test(error?.message || "");
+}
+
+function backendSyncFailureMessage(successMessage, error) {
+  const message = error?.message || "";
+
+  if (/sesion/i.test(message)) {
+    return `${successMessage} No quedo en el respaldo central: la sesion central expiro. Entra de nuevo y pulsa Actualizar.`;
+  }
+
+  if (/desactualizado|Accion no reconocida|404|not found/i.test(message)) {
+    return `${successMessage} No quedo en el respaldo central: el Apps Script publicado esta desactualizado. Publica el Code.gs actualizado y pulsa Actualizar.`;
+  }
+
+  if (/tardo|timeout|conectar|conexion|servidor|respond/i.test(message)) {
+    return `${successMessage} No quedo en el respaldo central: Google Apps Script no respondio a tiempo. Quedo aqui y Actualizar lo reintentara.`;
+  }
+
+  return `${successMessage} No quedo en el respaldo central. Quedo aqui y Actualizar lo reintentara.`;
 }
 
 function isLocalSession() {
@@ -2031,6 +2061,41 @@ function isRemoteDataShape(data) {
       ["projects", "movements", "partners", "inventory", "users"].some((key) =>
         Array.isArray(data[key]),
       ),
+  );
+}
+
+function hasLegacyCentralRows(data) {
+  const legacyProjectIds = new Set([
+    ["hotel", "manta"].join("-"),
+    ["evento", "quito"].join("-"),
+    ["local", "guayaquil"].join("-"),
+  ]);
+  const legacyMovementIds = new Set(
+    Array.from({ length: 4 }, (_, index) => `mov-00${index + 1}`),
+  );
+  const projects = Array.isArray(data?.projects) ? data.projects : [];
+  const movements = Array.isArray(data?.movements) ? data.movements : [];
+
+  return (
+    projects.some((project) => legacyProjectIds.has(String(project.id))) ||
+    movements.some((movement) => legacyMovementIds.has(String(movement.id)))
+  );
+}
+
+function isOutdatedBackendResponse(result) {
+  if (!result || result.ok === false) {
+    return false;
+  }
+
+  if (result.version) {
+    return result.version !== REQUIRED_APPS_SCRIPT_VERSION;
+  }
+
+  return Boolean(
+    result.app === "ProN" ||
+      result.sheetId ||
+      hasLegacyCentralRows(result.data) ||
+      (result.data?.settings && result.data.settings.cleanStartVersion !== CLEAN_START_VERSION),
   );
 }
 
