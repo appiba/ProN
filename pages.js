@@ -1128,6 +1128,25 @@ async function submitAction(action, payload, successMessage) {
     setBusy(true);
     applyLocalAction(action, payload);
     saveLocalData();
+    if (!isLocalSession()) {
+      try {
+        const mergeResult = await callBackend("merge-local-data", {
+          data: normalizeData(cloneData(state.data)),
+        });
+        const mergedData = normalizeRemoteData(mergeResult.data);
+        if (mergedData) {
+          state.data = mergedData;
+          saveLocalData();
+        }
+        state.backend = "ready";
+        setMessage(`${successMessage} Datos guardados en el respaldo central.`);
+        updateConnection("Sistema activo", "ok");
+        render();
+        return;
+      } catch {
+        // Keep the local copy and show the manual sync message below.
+      }
+    }
     setMessage(
       `${successMessage} Quedo guardado en este navegador; pulsa Actualizar para compartirlo desde el link cuando el sistema central responda.`,
       "warning",

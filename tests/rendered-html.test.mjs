@@ -187,6 +187,7 @@ test("ships the GitHub Pages and Apps Script integration", async () => {
   assert.match(pages, /buildReportPdf/);
   assert.match(pages, /pron-informe-completo/);
   assert.match(pages, /merge-local-data/);
+  assert.match(pages, /Datos guardados en el respaldo central/);
   assert.match(pages, /mergeLocalSnapshotIfNeeded/);
   assert.match(pages, /isRemoteDataShape/);
   assert.match(pages, /pruneLegacySeedRows/);
