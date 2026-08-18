@@ -372,12 +372,25 @@ function normalizedSearchText(value) {
 }
 
 function eventReferenceAssets(project) {
-  const target = normalizedSearchText(
-    `${project?.name || ""} ${project?.type || ""} ${project?.objective || ""}`,
-  );
+  return isOfficialPerroNegroProject(project) ? EVENT_REFERENCE_ASSETS : [];
+}
 
-  return EVENT_REFERENCE_ASSETS.filter((asset) =>
-    asset.match.every((piece) => target.includes(piece)),
+function hasPerroNegroSeedMovements(data, projectId) {
+  return (Array.isArray(data?.movements) ? data.movements : []).some(
+    (movement) =>
+      movement.projectId === projectId &&
+      String(movement.id || "").startsWith("mov-perro-negro-"),
+  );
+}
+
+function isOfficialPerroNegroProject(project) {
+  if (!project?.id) {
+    return false;
+  }
+
+  return (
+    project.id === PERRO_NEGRO_PROJECT_ID ||
+    hasPerroNegroSeedMovements(state.data, project.id)
   );
 }
 
@@ -462,10 +475,10 @@ function eventFinancialSummary(project, movements, partners) {
   const incomeExpected = sumMovements(movements, "Ingreso");
   const incomeReal = sumMovements(movements, "Ingreso", (movement) => !isForecastMovement(movement));
   const investment = sumMovements(movements, "Inversion");
-  const costTarget = Math.max(budget, expenses);
+  const costTarget = expenses;
   const subtotalNoIva = costTarget / (1 + IVA_RATE);
   const ivaEstimated = costTarget - subtotalNoIva;
-  const contingency = subtotalNoIva * CONTINGENCY_RATE;
+  const contingency = costTarget ? subtotalNoIva * CONTINGENCY_RATE : 0;
   const profitExpected = incomeExpected - costTarget;
   const profitReal = incomeReal - realExpenses;
   const marginExpected = incomeExpected ? (profitExpected / incomeExpected) * 100 : 0;
@@ -1986,7 +1999,7 @@ function withOfficialSeeds(data) {
   const existingProject = baseData.projects.find(
     (project) =>
       project.id === PERRO_NEGRO_PROJECT_ID ||
-      normalizedSearchText(project.name).includes("perro negro"),
+      hasPerroNegroSeedMovements(baseData, project.id),
   );
   const projectId = existingProject?.id || PERRO_NEGRO_PROJECT_ID;
   const seed = perroNegroSeed(projectId);
@@ -4183,22 +4196,26 @@ function renderEventControlPanel(project, movements, partners) {
   ]);
 
   const rows = [
-    {
-      type: "Costo fijo",
-      category: "Presupuesto registrado",
-      total: summary.costTarget,
-      base: summary.subtotalNoIva,
-      iva: summary.ivaEstimated,
-      status: "Meta",
-    },
-    {
-      type: "Reserva",
-      category: "Imprevistos 5%",
-      total: summary.contingency,
-      base: summary.contingency,
-      iva: 0,
-      status: "Referencia",
-    },
+    ...(summary.costTarget
+      ? [
+          {
+            type: "Costo fijo",
+            category: "Costos registrados",
+            total: summary.costTarget,
+            base: summary.subtotalNoIva,
+            iva: summary.ivaEstimated,
+            status: "Registrado",
+          },
+          {
+            type: "Reserva",
+            category: "Imprevistos 5%",
+            total: summary.contingency,
+            base: summary.contingency,
+            iva: 0,
+            status: "Referencia",
+          },
+        ]
+      : []),
     ...summary.costRows.map((row) => ({
       type: "Costo",
       category: row.category,
@@ -4219,21 +4236,30 @@ function renderEventControlPanel(project, movements, partners) {
 
   replaceChildren(
     "#eventBudgetBody",
-    rows.map((row) =>
-      el("tr", {}, [
-        el("td", { text: row.type }),
-        el("td", { text: row.category }),
-        el("td", { text: money(row.base) }),
-        el("td", { text: row.iva ? money(row.iva) : "-" }),
-        el("td", { text: money(row.total) }),
-        el("td", {}, [
-          el("span", {
-            class: `pill ${row.status === "Real" ? "live" : row.status === "Meta" ? "approved" : "review"}`,
-            text: row.status,
-          }),
-        ]),
-      ]),
-    ),
+    rows.length
+      ? rows.map((row) =>
+          el("tr", {}, [
+            el("td", { text: row.type }),
+            el("td", { text: row.category }),
+            el("td", { text: money(row.base) }),
+            el("td", { text: row.iva ? money(row.iva) : "-" }),
+            el("td", { text: money(row.total) }),
+            el("td", {}, [
+              el("span", {
+                class: `pill ${row.status === "Real" || row.status === "Registrado" ? "live" : row.status === "Meta" ? "approved" : "review"}`,
+                text: row.status,
+              }),
+            ]),
+          ]),
+        )
+      : [
+          el("tr", {}, [
+            el("td", {
+              colspan: 6,
+              text: "Este evento todavia no tiene costos ni ingresos propios. Registra movimientos para activar el control financiero.",
+            }),
+          ]),
+        ],
   );
 
   replaceChildren(
