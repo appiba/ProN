@@ -5,7 +5,7 @@ const SHEET_URL =
 const TOKEN_KEY = "pron_session_token";
 const SESSION_USER_KEY = "pron_session_user";
 const CLEAN_START_VERSION = "pron-clean-start-20260803-v1";
-const REQUIRED_APPS_SCRIPT_VERSION = "20260818-central-save";
+const REQUIRED_APPS_SCRIPT_VERSION = "20260818-legacy-clean";
 const LOCAL_DB_KEY = "pron_local_database_clean_v1";
 const PENDING_LOCAL_CHANGES_KEY = "pron_pending_local_changes";
 const LOCAL_TOKEN_PREFIX = "local-";
@@ -2312,7 +2312,11 @@ async function mergeLocalSnapshotIfNeeded(localSnapshot, remoteData) {
   try {
     return syncLocalSnapshotToBackend(localSnapshot, remoteData);
   } catch {
-    return replayLocalRowsToLegacyBackend(localSnapshot, remoteData);
+    let remote = await replayLocalRowsToLegacyBackend(localSnapshot, remoteData);
+    if (hasRemoteRowsExtra(localSnapshot, remote)) {
+      remote = await deleteRemoteRowsMissingLocally(localSnapshot, remote);
+    }
+    return remote;
   }
 }
 

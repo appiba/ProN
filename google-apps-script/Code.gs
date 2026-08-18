@@ -1,6 +1,6 @@
 var CONFIG = {
   APP_NAME: "ProN",
-  SCRIPT_VERSION: "20260818-central-save",
+  SCRIPT_VERSION: "20260818-legacy-clean",
   SHEET_ID: "1KCzz2B59PN3IvcyM2_G2uvTi8nA759oV7rUsaXvrcSY",
   TIMEZONE: "America/Guayaquil",
   CURRENCY: "USD",
