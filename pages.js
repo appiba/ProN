@@ -5,7 +5,7 @@ const SHEET_URL =
 const TOKEN_KEY = "pron_session_token";
 const SESSION_USER_KEY = "pron_session_user";
 const CLEAN_START_VERSION = "pron-clean-start-20260803-v1";
-const REQUIRED_APPS_SCRIPT_VERSION = "20260818-central-status";
+const REQUIRED_APPS_SCRIPT_VERSION = "20260818-central-save";
 const LOCAL_DB_KEY = "pron_local_database_clean_v1";
 const PENDING_LOCAL_CHANGES_KEY = "pron_pending_local_changes";
 const LOCAL_TOKEN_PREFIX = "local-";
@@ -1267,7 +1267,7 @@ async function submitAction(action, payload, successMessage) {
     if (!isLocalSession()) {
       try {
         const mergeResult = await callBackend("merge-local-data", {
-          data: normalizeData(cloneData(state.data)),
+          data: syncSnapshotData(state.data),
         });
         const mergedData = normalizeRemoteData(mergeResult.data);
         if (mergedData) {
@@ -2134,7 +2134,7 @@ function normalizeRemoteData(data) {
   return pruneLegacySeedRows(data);
 }
 
-const SHARED_DATA_COLLECTIONS = ["projects", "movements", "partners", "inventory", "users", "audit"];
+const SHARED_DATA_COLLECTIONS = ["projects", "movements", "partners", "inventory", "users"];
 const DELETE_SYNC_ORDER = ["movements", "partners", "inventory", "users", "projects"];
 const DELETE_ACTION_BY_COLLECTION = {
   projects: "delete-project",
@@ -2277,7 +2277,7 @@ async function deleteRemoteRowsMissingLocally(localSnapshot, remoteData) {
 
 async function syncLocalSnapshotToBackend(localSnapshot, remoteData) {
   let remote = normalizeRemoteData(remoteData) || normalizeData(remoteData);
-  const result = await callBackend("merge-local-data", { data: localSnapshot });
+  const result = await callBackend("merge-local-data", { data: syncSnapshotData(localSnapshot) });
   remote = normalizeRemoteData(result.data) || remote;
 
   if (hasRemoteRowsExtra(localSnapshot, remote)) {
@@ -2285,6 +2285,19 @@ async function syncLocalSnapshotToBackend(localSnapshot, remoteData) {
   }
 
   return remote;
+}
+
+function syncSnapshotData(data) {
+  const snapshot = normalizeData(data);
+  return {
+    settings: snapshot.settings,
+    projects: snapshot.projects,
+    movements: snapshot.movements,
+    partners: snapshot.partners,
+    inventory: snapshot.inventory,
+    users: snapshot.users,
+    audit: [],
+  };
 }
 
 async function mergeLocalSnapshotIfNeeded(localSnapshot, remoteData) {
