@@ -534,6 +534,7 @@
                 <p id="detailProjectObjective"></p>
               </div>
               <div class="project-actions">
+                <button id="detailEditProjectButton" type="button">Editar proyecto</button>
                 <button id="detailPdfButton" type="button">Descargar PDF</button>
                 <button id="detailArchiveButton" class="ghost-button" type="button">
                   Archivar
@@ -545,23 +546,77 @@
             </header>
 
             <section class="metrics compact-metrics" aria-label="Indicadores del proyecto">
-              <article>
+              <article class="interactive-kpi" data-detail-target="budget" tabindex="0">
                 <span>Presupuesto</span>
                 <strong id="detailBudget">$0,00</strong>
+                <small>Ver / Editar</small>
               </article>
-              <article>
+              <article class="interactive-kpi" data-detail-target="income" tabindex="0">
                 <span>Ingresos</span>
                 <strong id="detailIncome">$0,00</strong>
+                <small>+ Ingreso</small>
               </article>
-              <article>
+              <article class="interactive-kpi" data-detail-target="investment" tabindex="0">
                 <span>Inversiones</span>
                 <strong id="detailInvestment">$0,00</strong>
+                <small>+ Inversion</small>
               </article>
-              <article>
+              <article class="interactive-kpi" data-detail-target="expenses" tabindex="0">
                 <span>Gastos</span>
                 <strong id="detailExpenses">$0,00</strong>
+                <small>+ Gasto</small>
               </article>
             </section>
+
+            <article id="projectEditPanel" class="panel wide project-edit-panel is-hidden">
+              <div class="panel-title">
+                <div>
+                  <p class="eyebrow">Edicion directa</p>
+                  <h3>Editar proyecto y presupuesto</h3>
+                </div>
+                <span id="projectBudgetDeltaPill" class="pill">Sin cambios</span>
+              </div>
+              <div id="projectBudgetSummary" class="budget-summary-grid"></div>
+              <form id="detailProjectEditForm" class="project-edit-form">
+                <input name="projectId" type="hidden" />
+                <label>
+                  Nombre
+                  <input name="name" placeholder="Nombre del proyecto" required />
+                </label>
+                <label>
+                  Tipo
+                  <select name="type">
+                    <option>Negocio</option>
+                    <option>Evento</option>
+                    <option>Apertura de local</option>
+                    <option>Proyecto personalizado</option>
+                  </select>
+                </label>
+                <label>
+                  Estado
+                  <select name="status"></select>
+                </label>
+                <label>
+                  Presupuesto actual
+                  <input name="budget" inputmode="decimal" placeholder="Presupuesto USD" required />
+                </label>
+                <label class="wide-field">
+                  Objetivo / descripcion
+                  <textarea name="objective" rows="3" placeholder="Objetivo operativo"></textarea>
+                </label>
+                <label class="wide-field">
+                  Motivo del cambio
+                  <input name="reason" placeholder="Ej. Se ajusto produccion, permisos o capital requerido" />
+                </label>
+                <div id="budgetChangePreview" class="change-preview" aria-live="polite"></div>
+                <div class="form-actions wide-field">
+                  <button id="detailProjectEditSubmitButton" type="submit">Guardar actualizacion</button>
+                  <button id="detailProjectEditCancelButton" class="ghost-button" type="button">
+                    Cancelar
+                  </button>
+                </div>
+              </form>
+            </article>
 
             <article class="panel wide status-panel">
               <div class="panel-title">
@@ -750,6 +805,7 @@
               <article class="panel">
                 <h3>Movimiento del proyecto</h3>
                 <form id="detailMovementForm" class="stack-form">
+                  <input name="movementId" type="hidden" />
                   <select name="type">
                     <option>Gasto</option>
                     <option>Ingreso</option>
@@ -770,13 +826,17 @@
                     <option>Pendiente</option>
                     <option>Cobrado</option>
                   </select>
-                  <button type="submit">Guardar movimiento</button>
+                  <button id="detailMovementSubmitButton" type="submit">Guardar movimiento</button>
+                  <button id="detailMovementCancelButton" class="ghost-button" type="button" hidden>
+                    Cancelar edicion
+                  </button>
                 </form>
               </article>
 
               <article class="panel">
                 <h3>Socio o inversionista</h3>
                 <form id="detailPartnerForm" class="stack-form">
+                  <input name="partnerId" type="hidden" />
                   <input name="name" placeholder="Nombre" required />
                   <select name="type">
                     <option>Socio</option>
@@ -787,19 +847,37 @@
                   </select>
                   <input name="contribution" inputmode="decimal" placeholder="Aporte USD" />
                   <input name="participation" inputmode="decimal" placeholder="Participacion %" />
+                  <select name="status">
+                    <option>Activo</option>
+                    <option>En revision</option>
+                    <option>Retirado</option>
+                  </select>
                   <div id="detailPartnerParticipationStatus" class="participation-status" aria-live="polite"></div>
-                  <button type="submit">Guardar socio</button>
+                  <button id="detailPartnerSubmitButton" type="submit">Guardar socio</button>
+                  <button id="detailPartnerCancelButton" class="ghost-button" type="button" hidden>
+                    Cancelar edicion
+                  </button>
                 </form>
               </article>
 
               <article class="panel">
                 <h3>Inventario del proyecto</h3>
                 <form id="detailInventoryForm" class="stack-form">
+                  <input name="inventoryId" type="hidden" />
                   <input name="item" placeholder="Item" required />
                   <select name="category" required></select>
                   <input name="quantity" inputmode="numeric" placeholder="Cantidad" required />
                   <input name="unitCost" inputmode="decimal" placeholder="Costo unitario" />
-                  <button type="submit">Agregar inventario</button>
+                  <select name="status">
+                    <option>Disponible</option>
+                    <option>En uso</option>
+                    <option>Reservado</option>
+                    <option>Retirado</option>
+                  </select>
+                  <button id="detailInventorySubmitButton" type="submit">Agregar inventario</button>
+                  <button id="detailInventoryCancelButton" class="ghost-button" type="button" hidden>
+                    Cancelar edicion
+                  </button>
                 </form>
               </article>
 
@@ -857,7 +935,10 @@
                       <tr>
                         <th>Item</th>
                         <th>Categoria</th>
+                        <th>Cantidad</th>
+                        <th>Costo unitario</th>
                         <th>Valor</th>
+                        <th>Estado</th>
                         <th>Acciones</th>
                       </tr>
                     </thead>
@@ -871,6 +952,6 @@
       </section>
     </main>
 
-    <script src="pages.js?v=20260807-vinilos-socios"></script>
+    <script src="pages.js?v=20260807-editable-projects"></script>
   </body>
 </html>

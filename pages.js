@@ -273,8 +273,10 @@ function activeProjectPartners() {
   return projectId ? projectPartners(projectId) : [];
 }
 
-function projectParticipationStats(projectId) {
-  const partners = projectPartners(projectId);
+function projectParticipationStats(projectId, excludePartnerId = "") {
+  const partners = projectPartners(projectId).filter(
+    (partner) => partner.id !== excludePartnerId && partner.status !== "Retirado",
+  );
   const assigned = partners.reduce((sum, partner) => sum + numberValue(partner.participation), 0);
   const contribution = partners.reduce((sum, partner) => sum + numberValue(partner.contribution), 0);
   const budget = numberValue(projectById(projectId)?.budget);
@@ -288,6 +290,10 @@ function projectParticipationStats(projectId) {
     budgetGap: Math.max(0, budget - contribution),
     surplus: Math.max(0, contribution - budget),
   };
+}
+
+function projectInitialBudget(project) {
+  return numberValue(project?.initialBudget || project?.budget);
 }
 
 function partnerStats(partnerId) {
@@ -477,9 +483,9 @@ function eventFinancialSummary(project, movements, partners) {
   };
 }
 
-function validatePartnerParticipation(projectId, participation) {
+function validatePartnerParticipation(projectId, participation, excludePartnerId = "") {
   const requested = numberValue(participation);
-  const current = projectParticipationStats(projectId);
+  const current = projectParticipationStats(projectId, excludePartnerId);
   const totalAfter = current.assigned + requested;
 
   if (requested < 0) {
@@ -1244,6 +1250,8 @@ function applyLocalAction(action, payload) {
         timezone: payload.timezone || "America/Guayaquil",
         status: PROJECT_STATUSES.includes(payload.status) ? payload.status : "En revision",
         budget: numberValue(payload.budget),
+        initialBudget: numberValue(payload.budget),
+        lastBudgetReason: payload.reason || "Presupuesto inicial",
         objective: payload.objective || "Proyecto creado desde ProN.",
         createdAt: today(),
         updatedAt: today(),
@@ -1252,6 +1260,32 @@ function applyLocalAction(action, payload) {
     ];
     state.selectedProjectId = id;
     addAudit("Proyecto creado", `${payload.name} quedo en revision.`, id);
+    return;
+  }
+
+  if (action === "update-project") {
+    const previous = projectById(payload.projectId);
+    const nextBudget = numberValue(payload.budget);
+    state.data.projects = state.data.projects.map((project) =>
+      project.id === payload.projectId
+        ? {
+            ...project,
+            name: payload.name || project.name,
+            type: payload.type || project.type,
+            status: PROJECT_STATUSES.includes(payload.status) ? payload.status : project.status,
+            budget: nextBudget,
+            initialBudget: projectInitialBudget(project),
+            lastBudgetReason: payload.reason || project.lastBudgetReason || "",
+            objective: payload.objective || project.objective,
+            updatedAt: today(),
+          }
+        : project,
+    );
+    addAudit(
+      "Proyecto actualizado",
+      `${previous?.name || "Proyecto"}: presupuesto ${money(previous?.budget)} -> ${money(nextBudget)}. ${payload.reason || ""}`.trim(),
+      payload.projectId,
+    );
     return;
   }
 
@@ -1314,11 +1348,34 @@ function applyLocalAction(action, payload) {
         type: payload.type || "Socio",
         contribution: numberValue(payload.contribution),
         participation: numberValue(payload.participation),
-        status: "Activo",
+        status: payload.status || "Activo",
       },
       ...state.data.partners,
     ];
     addAudit("Socio agregado", `${payload.name} fue vinculado al proyecto.`, payload.projectId);
+    return;
+  }
+
+  if (action === "update-partner") {
+    const previous = partnerById(payload.partnerId);
+    state.data.partners = state.data.partners.map((partner) =>
+      partner.id === payload.partnerId
+        ? {
+            ...partner,
+            projectId: payload.projectId || partner.projectId,
+            name: payload.name || partner.name,
+            type: payload.type || partner.type,
+            contribution: numberValue(payload.contribution),
+            participation: numberValue(payload.participation),
+            status: payload.status || partner.status || "Activo",
+          }
+        : partner,
+    );
+    addAudit(
+      payload.status === "Retirado" ? "Socio retirado" : "Socio actualizado",
+      `${previous?.name || payload.name || "Socio"}: ${percentLabel(previous?.participation)} -> ${percentLabel(payload.participation)}.`,
+      payload.projectId || previous?.projectId,
+    );
     return;
   }
 
@@ -1331,11 +1388,30 @@ function applyLocalAction(action, payload) {
         category: payload.category || "Inventario",
         quantity: numberValue(payload.quantity),
         unitCost: numberValue(payload.unitCost),
-        status: "Disponible",
+        status: payload.status || "Disponible",
       },
       ...state.data.inventory,
     ];
     addAudit("Inventario agregado", `${payload.item} quedo registrado.`, payload.projectId);
+    return;
+  }
+
+  if (action === "update-inventory") {
+    const previous = state.data.inventory.find((entry) => entry.id === payload.inventoryId);
+    state.data.inventory = state.data.inventory.map((item) =>
+      item.id === payload.inventoryId
+        ? {
+            ...item,
+            projectId: payload.projectId || item.projectId,
+            item: payload.item || item.item,
+            category: payload.category || item.category,
+            quantity: numberValue(payload.quantity),
+            unitCost: numberValue(payload.unitCost),
+            status: payload.status || item.status || "Disponible",
+          }
+        : item,
+    );
+    addAudit("Inventario actualizado", `${previous?.item || payload.item || "Item"} fue actualizado.`, payload.projectId || previous?.projectId);
     return;
   }
 
@@ -1421,6 +1497,8 @@ function vinilosSeed() {
     timezone: "America/Guayaquil",
     status: "En revision",
     budget: 15000,
+    initialBudget: 15000,
+    lastBudgetReason: "Estimacion inicial",
     objective:
       "Estimacion inicial de Vinilos por $15.000. Pendiente completar presupuesto, socios, gastos e ingresos reales.",
     createdAt: date,
@@ -1435,6 +1513,17 @@ function isVinilosProject(project) {
 
 function withVinilosSeed(data) {
   const seed = vinilosSeed();
+  const currentVinilos = data.projects.find(
+    (project) => project.id === VINILOS_PROJECT_ID || isVinilosProject(project),
+  );
+  const canonicalVinilos = currentVinilos
+    ? {
+        ...seed,
+        ...currentVinilos,
+        id: VINILOS_PROJECT_ID,
+        initialBudget: numberValue(currentVinilos.initialBudget || seed.initialBudget),
+      }
+    : seed;
   const legacyVinilosIds = new Set(
     data.projects
       .filter((project) => project.id !== VINILOS_PROJECT_ID && isVinilosProject(project))
@@ -1445,7 +1534,7 @@ function withVinilosSeed(data) {
   return {
     ...data,
     projects: [
-      seed,
+      canonicalVinilos,
       ...data.projects.filter(
         (project) => project.id !== VINILOS_PROJECT_ID && !isVinilosProject(project),
       ),
@@ -1473,6 +1562,8 @@ function perroNegroSeed(projectId = PERRO_NEGRO_PROJECT_ID) {
     timezone: "America/Guayaquil",
     status: EVENT_STATUS,
     budget: 53487.15,
+    initialBudget: 53487.15,
+    lastBudgetReason: "Presupuesto original importado",
     objective:
       "Fiesta Perro Negro en Casa Blanca, Ibarra. Evento en marcha con control de venue, permisos, seguridad, produccion, barra, marketing, socios y utilidad.",
     createdAt: date,
@@ -1579,10 +1670,11 @@ function withOfficialSeeds(data) {
     ? baseData.projects.map((project) =>
         project.id === projectId
           ? {
-              ...project,
               ...seed.project,
+              ...project,
               id: project.id,
               createdAt: project.createdAt || seed.project.createdAt,
+              initialBudget: numberValue(project.initialBudget || seed.project.initialBudget),
             }
           : project,
       )
@@ -1620,7 +1712,12 @@ function normalizeData(data) {
   const next = data || fallbackData;
   return withOfficialSeeds({
     settings: { ...fallbackData.settings, ...(next.settings || {}) },
-    projects: Array.isArray(next.projects) ? next.projects : [],
+    projects: (Array.isArray(next.projects) ? next.projects : []).map((project) => ({
+      ...project,
+      budget: numberValue(project.budget),
+      initialBudget: numberValue(project.initialBudget || project.budget),
+      lastBudgetReason: project.lastBudgetReason || "",
+    })),
     movements: Array.isArray(next.movements) ? next.movements : [],
     partners: Array.isArray(next.partners) ? next.partners : [],
     inventory: Array.isArray(next.inventory) ? next.inventory : [],
@@ -1720,12 +1817,52 @@ function hasLocalRowsMissing(localData, remoteData) {
   });
 }
 
+function comparableSharedRow(collection, row) {
+  const keysByCollection = {
+    projects: ["id", "name", "type", "status", "budget", "initialBudget", "lastBudgetReason", "objective"],
+    movements: ["id", "projectId", "type", "category", "concept", "amount", "movementDate", "status", "partnerId"],
+    partners: ["id", "projectId", "name", "type", "contribution", "participation", "status"],
+    inventory: ["id", "projectId", "item", "category", "quantity", "unitCost", "status"],
+    users: ["id", "name", "username", "role", "status", "projectId"],
+  };
+  const numericKeys = new Set(["budget", "initialBudget", "amount", "contribution", "participation", "quantity", "unitCost"]);
+  const keys = keysByCollection[collection] || ["id"];
+
+  return keys.reduce((object, key) => {
+    object[key] = numericKeys.has(key) ? numberValue(row?.[key]) : String(row?.[key] || "");
+    return object;
+  }, {});
+}
+
+function hasLocalRowsChanged(localData, remoteData) {
+  return ["projects", "movements", "partners", "inventory", "users"].some((collection) => {
+    const remoteRows = new Map(sharedRows(remoteData, collection).map((row) => [collectionKey(row), row]));
+
+    return sharedRows(localData, collection).some((localRow) => {
+      const id = collectionKey(localRow);
+      if (!id) {
+        return false;
+      }
+      const remoteRow = remoteRows.get(id);
+      if (!remoteRow) {
+        return true;
+      }
+      return JSON.stringify(comparableSharedRow(collection, localRow)) !==
+        JSON.stringify(comparableSharedRow(collection, remoteRow));
+    });
+  });
+}
+
 function hasBusinessData(data = state.data) {
   return countSharedRows(data) > 0;
 }
 
 async function mergeLocalSnapshotIfNeeded(localSnapshot, remoteData) {
-  if (!remoteData || !hasBusinessData(localSnapshot) || !hasLocalRowsMissing(localSnapshot, remoteData)) {
+  if (
+    !remoteData ||
+    !hasBusinessData(localSnapshot) ||
+    (!hasLocalRowsMissing(localSnapshot, remoteData) && !hasLocalRowsChanged(localSnapshot, remoteData))
+  ) {
     return remoteData;
   }
 
@@ -2178,7 +2315,8 @@ function renderPartnerParticipationForm(form, projectId, statusSelector) {
     return;
   }
 
-  const stats = projectParticipationStats(projectId);
+  const editPartnerId = form?.elements.partnerId?.value || "";
+  const stats = projectParticipationStats(projectId, editPartnerId);
   const requested = numberValue(form?.elements.participation?.value);
   const requestedContribution = numberValue(form?.elements.contribution?.value);
   const totalAfter = stats.assigned + requested;
@@ -3285,13 +3423,14 @@ function renderPartnerCard(partner) {
   const stats = partnerStats(partner.id);
   const budgetShare = numberValue(projectById(partner.projectId)?.budget) *
     (numberValue(partner.participation) / 100);
+  const retired = partner.status === "Retirado";
 
   return el("div", { class: "partner-card" }, [
     el("div", { class: "partner-card-head" }, [
       el("div", {}, [
         el("span", { text: partner.type }),
         el("b", { text: partner.name }),
-        el("small", { text: projectName(partner.projectId) }),
+        el("small", { text: `${projectName(partner.projectId)} | ${partner.status || "Activo"}` }),
       ]),
       el("strong", {
         class: "partner-percent",
@@ -3331,20 +3470,27 @@ function renderPartnerCard(partner) {
     el("div", { class: "card-actions" }, [
       el("button", {
         type: "button",
+        text: "Editar",
+        onclick: () => editDetailPartner(partner.id),
+      }),
+      el("button", {
+        type: "button",
         text: "Descargar",
         onclick: () => downloadPartnerCard(partner.id),
       }),
       el("button", {
         type: "button",
         class: "danger",
-        text: "Eliminar",
+        text: retired ? "Eliminar" : "Retirar",
         onclick: () =>
-          confirmDelete(
-            `Eliminar socio ${partner.name}?`,
-            "delete-partner",
-            { partnerId: partner.id },
-            "Socio eliminado.",
-          ),
+          retired
+            ? confirmDelete(
+                `Eliminar definitivamente socio ${partner.name}?`,
+                "delete-partner",
+                { partnerId: partner.id },
+                "Socio eliminado.",
+              )
+            : retireDetailPartner(partner.id),
       }),
     ]),
   ]);
@@ -3780,7 +3926,7 @@ function editAdminMovement(movementId) {
   form.elements.type.value = movement.type || "Gasto";
   renderCategorySelects();
   renderPartnerSelects();
-  form.elements.category.value = movement.category || "Operacion";
+  setSelectValue(form.elements.category, movement.category || "Operacion");
   form.elements.partnerId.value = movement.partnerId || "";
   form.elements.concept.value = movement.concept || "";
   form.elements.amount.value = numberValue(movement.amount) || "";
@@ -3789,6 +3935,284 @@ function editAdminMovement(movementId) {
   setTextIfExists("#detailAdminSubmitButton", "Actualizar registro");
   $("#detailAdminCancelButton").hidden = false;
   form.scrollIntoView({ block: "center", behavior: "smooth" });
+}
+
+function populateProjectEditStatusSelect(form) {
+  if (!form?.elements.status) {
+    return;
+  }
+
+  const currentStatus = form.elements.status.value;
+  form.elements.status.replaceChildren(
+    ...PROJECT_STATUSES.map((status) => el("option", { value: status, text: status })),
+  );
+  form.elements.status.value = PROJECT_STATUSES.includes(currentStatus)
+    ? currentStatus
+    : "En revision";
+}
+
+function setSelectValue(select, value) {
+  if (!select || !value) {
+    return;
+  }
+
+  if (![...select.options].some((option) => option.value === value)) {
+    select.append(el("option", { value, text: value }));
+  }
+  select.value = value;
+}
+
+function renderProjectEditPanel(project, current, movements) {
+  const form = $("#detailProjectEditForm");
+  if (!form) {
+    return;
+  }
+
+  const initialBudget = projectInitialBudget(project);
+  const budget = numberValue(project.budget);
+  const variation = budget - initialBudget;
+  const variationPercent = initialBudget ? (variation / initialBudget) * 100 : 0;
+  const committed = current.expenses + current.investment;
+  const paid = movements
+    .filter((movement) => movement.type === "Gasto" && PAYMENT_CLOSED_STATUSES.has(movement.status))
+    .reduce((sum, movement) => sum + numberValue(movement.amount), 0);
+  const available = budget + current.income + current.investment - current.expenses;
+
+  replaceChildren("#projectBudgetSummary", [
+    budgetSummaryItem("Presupuesto inicial", money(initialBudget), "base original"),
+    budgetSummaryItem("Presupuesto actualizado", money(budget), "valor vigente"),
+    budgetSummaryItem("Variacion", money(variation), percentLabel(variationPercent), variation < 0 ? "danger" : variation > 0 ? "warning" : ""),
+    budgetSummaryItem("Comprometido", money(committed), "inversiones + gastos"),
+    budgetSummaryItem("Pagado", money(paid), "salidas cerradas"),
+    budgetSummaryItem("Saldo disponible", money(available), "balance operativo", available < 0 ? "danger" : "good"),
+  ]);
+
+  populateProjectEditStatusSelect(form);
+  const activeInsidePanel = $("#projectEditPanel")?.contains(document.activeElement);
+  if (!activeInsidePanel || form.elements.projectId.value !== project.id) {
+    form.elements.projectId.value = project.id;
+    form.elements.name.value = project.name || "";
+    setSelectValue(form.elements.type, project.type || "Proyecto personalizado");
+    setSelectValue(form.elements.status, projectStatus(project));
+    form.elements.budget.value = budget || "";
+    form.elements.objective.value = project.objective || "";
+    form.elements.reason.value = "";
+  }
+  updateBudgetChangePreview();
+}
+
+function budgetSummaryItem(label, value, note, tone = "") {
+  return el("article", { class: tone }, [
+    el("span", { text: label }),
+    el("strong", { text: value }),
+    el("small", { text: note }),
+  ]);
+}
+
+function toggleProjectEditPanel(forceOpen = null) {
+  const panel = $("#projectEditPanel");
+  if (!panel) {
+    return;
+  }
+
+  const shouldOpen = forceOpen === null ? panel.classList.contains("is-hidden") : forceOpen;
+  panel.classList.toggle("is-hidden", !shouldOpen);
+  if (shouldOpen) {
+    const project = projectById(state.detailProjectId || state.selectedProjectId);
+    if (project) {
+      renderProjectEditPanel(
+        project,
+        totals(project.id),
+        state.data.movements.filter((movement) => movement.projectId === project.id),
+      );
+    }
+    panel.scrollIntoView({ block: "start", behavior: "smooth" });
+  }
+}
+
+function updateBudgetChangePreview() {
+  const form = $("#detailProjectEditForm");
+  const project = projectById(form?.elements.projectId?.value);
+  const preview = $("#budgetChangePreview");
+  const pill = $("#projectBudgetDeltaPill");
+
+  if (!form || !project || !preview) {
+    return;
+  }
+
+  const previousBudget = numberValue(project.budget);
+  const nextBudget = numberValue(form.elements.budget.value);
+  const delta = nextBudget - previousBudget;
+  const percentChange = previousBudget ? (delta / previousBudget) * 100 : 0;
+  const originalDelta = nextBudget - projectInitialBudget(project);
+
+  preview.replaceChildren(
+    el("span", { text: `Anterior: ${money(previousBudget)}` }),
+    el("span", { text: `Nuevo: ${money(nextBudget)}` }),
+    el("span", { text: `Variacion: ${money(delta)} (${percentLabel(percentChange)})` }),
+    el("span", { text: `Contra inicial: ${money(originalDelta)}` }),
+  );
+
+  if (pill) {
+    pill.textContent = delta === 0 ? "Sin cambios" : `${delta > 0 ? "+" : ""}${money(delta)}`;
+    pill.className = `pill ${delta < 0 ? "danger" : delta > 0 ? "warning" : ""}`;
+  }
+}
+
+function clearDetailMovementEditMode() {
+  const form = $("#detailMovementForm");
+  if (!form) {
+    return;
+  }
+
+  form.reset();
+  form.elements.movementId.value = "";
+  form.elements.movementDate.value = today();
+  setTextIfExists("#detailMovementSubmitButton", "Guardar movimiento");
+  $("#detailMovementCancelButton").hidden = true;
+  renderCategorySelects();
+  renderPartnerSelects();
+}
+
+function editDetailMovement(movementId, duplicate = false) {
+  const movement = state.data.movements.find((item) => item.id === movementId);
+  const form = $("#detailMovementForm");
+
+  if (!movement || !form) {
+    return;
+  }
+
+  form.elements.movementId.value = duplicate ? "" : movement.id;
+  form.elements.type.value = movement.type || "Gasto";
+  renderCategorySelects();
+  renderPartnerSelects();
+  setSelectValue(form.elements.category, movement.category || "Operacion");
+  form.elements.partnerId.value = movement.partnerId || "";
+  form.elements.concept.value = duplicate ? `${movement.concept || ""} copia`.trim() : movement.concept || "";
+  form.elements.amount.value = numberValue(movement.amount) || "";
+  form.elements.movementDate.value = movement.movementDate || today();
+  form.elements.status.value = movement.status || "Registrado";
+  setTextIfExists("#detailMovementSubmitButton", duplicate ? "Guardar copia" : "Actualizar movimiento");
+  $("#detailMovementCancelButton").hidden = duplicate;
+  form.scrollIntoView({ block: "center", behavior: "smooth" });
+}
+
+function clearDetailPartnerEditMode() {
+  const form = $("#detailPartnerForm");
+  if (!form) {
+    return;
+  }
+
+  form.reset();
+  form.elements.partnerId.value = "";
+  form.elements.status.value = "Activo";
+  setTextIfExists("#detailPartnerSubmitButton", "Guardar socio");
+  $("#detailPartnerCancelButton").hidden = true;
+  renderPartnerParticipationControls();
+}
+
+function editDetailPartner(partnerId) {
+  const partner = partnerById(partnerId);
+  const form = $("#detailPartnerForm");
+
+  if (!partner || !form) {
+    return;
+  }
+
+  if (state.activeTab !== "proyecto-detalle" || state.detailProjectId !== partner.projectId) {
+    state.selectedProjectId = partner.projectId || state.selectedProjectId;
+    state.summaryScopeId = partner.projectId || state.summaryScopeId;
+    state.detailProjectId = partner.projectId || state.detailProjectId;
+    setActiveView("proyecto-detalle");
+    render();
+    window.setTimeout(() => editDetailPartner(partnerId), 0);
+    return;
+  }
+
+  state.selectedProjectId = partner.projectId || state.selectedProjectId;
+  form.elements.partnerId.value = partner.id;
+  form.elements.name.value = partner.name || "";
+  setSelectValue(form.elements.type, partner.type || "Socio");
+  form.elements.contribution.value = numberValue(partner.contribution) || "";
+  form.elements.participation.value = numberValue(partner.participation) || "";
+  setSelectValue(form.elements.status, partner.status || "Activo");
+  setTextIfExists("#detailPartnerSubmitButton", "Actualizar socio");
+  $("#detailPartnerCancelButton").hidden = false;
+  renderPartnerParticipationControls();
+  form.scrollIntoView({ block: "center", behavior: "smooth" });
+}
+
+function retireDetailPartner(partnerId) {
+  const partner = partnerById(partnerId);
+  if (!partner) {
+    return;
+  }
+
+  if (!window.confirm(`Retirar socio ${partner.name} del proyecto sin borrar su historial?`)) {
+    return;
+  }
+
+  submitAction(
+    "update-partner",
+    {
+      ...partner,
+      partnerId: partner.id,
+      status: "Retirado",
+    },
+    "Socio retirado. El historial queda conservado.",
+  );
+}
+
+function clearDetailInventoryEditMode() {
+  const form = $("#detailInventoryForm");
+  if (!form) {
+    return;
+  }
+
+  form.reset();
+  form.elements.inventoryId.value = "";
+  form.elements.status.value = "Disponible";
+  setTextIfExists("#detailInventorySubmitButton", "Agregar inventario");
+  $("#detailInventoryCancelButton").hidden = true;
+  renderCategorySelects();
+}
+
+function editDetailInventory(inventoryId) {
+  const item = state.data.inventory.find((entry) => entry.id === inventoryId);
+  const form = $("#detailInventoryForm");
+
+  if (!item || !form) {
+    return;
+  }
+
+  form.elements.inventoryId.value = item.id;
+  form.elements.item.value = item.item || "";
+  renderCategorySelects();
+  setSelectValue(form.elements.category, item.category || "Inventario");
+  form.elements.quantity.value = numberValue(item.quantity) || "";
+  form.elements.unitCost.value = numberValue(item.unitCost) || "";
+  setSelectValue(form.elements.status, item.status || "Disponible");
+  setTextIfExists("#detailInventorySubmitButton", "Actualizar inventario");
+  $("#detailInventoryCancelButton").hidden = false;
+  form.scrollIntoView({ block: "center", behavior: "smooth" });
+}
+
+function focusDetailTarget(target) {
+  if (target === "budget") {
+    toggleProjectEditPanel(true);
+    return;
+  }
+
+  if (["income", "investment", "expenses"].includes(target)) {
+    const form = $("#detailMovementForm");
+    if (!form) {
+      return;
+    }
+    form.elements.type.value =
+      target === "income" ? "Ingreso" : target === "investment" ? "Inversion" : "Gasto";
+    renderCategorySelects();
+    form.scrollIntoView({ block: "center", behavior: "smooth" });
+  }
 }
 
 function renderAdministration(project, movements) {
@@ -3878,6 +4302,7 @@ function renderProjectDetail() {
   setTextIfExists("#detailInvestment", money(current.investment));
   setTextIfExists("#detailExpenses", money(current.expenses));
   setTextIfExists("#detailArchiveButton", projectStatus(project) === "Archivado" ? "Restaurar" : "Archivar");
+  renderProjectEditPanel(project, current, movements);
   renderProjectStatusPanel(project);
   renderEventControlPanel(project, movements, partners);
   renderEventReferencePanel(project);
@@ -3903,6 +4328,16 @@ function renderProjectDetail() {
         el("td", { text: money(movement.amount) }),
         el("td", {}, [
           el("div", { class: "row-actions" }, [
+            el("button", {
+              type: "button",
+              text: "Editar",
+              onclick: () => editDetailMovement(movement.id),
+            }),
+            el("button", {
+              type: "button",
+              text: "Duplicar",
+              onclick: () => editDetailMovement(movement.id, true),
+            }),
             el("button", {
               type: "button",
               text: "PDF",
@@ -3937,9 +4372,17 @@ function renderProjectDetail() {
       el("tr", {}, [
         el("td", { text: item.item }),
         el("td", { text: item.category }),
+        el("td", { text: String(numberValue(item.quantity)) }),
+        el("td", { text: money(item.unitCost) }),
         el("td", { text: money(numberValue(item.quantity) * numberValue(item.unitCost)) }),
+        el("td", { text: item.status || "Disponible" }),
         el("td", {}, [
           el("div", { class: "row-actions" }, [
+            el("button", {
+              type: "button",
+              text: "Editar",
+              onclick: () => editDetailInventory(item.id),
+            }),
             el("button", {
               type: "button",
               text: "PDF",
@@ -5227,6 +5670,23 @@ function bindEvents() {
     downloadProjectReport(state.detailProjectId || state.selectedProjectId);
   });
   $("#detailAdminCancelButton").addEventListener("click", clearAdminEditMode);
+  $("#detailMovementCancelButton").addEventListener("click", clearDetailMovementEditMode);
+  $("#detailPartnerCancelButton").addEventListener("click", clearDetailPartnerEditMode);
+  $("#detailInventoryCancelButton").addEventListener("click", clearDetailInventoryEditMode);
+  $("#detailEditProjectButton").addEventListener("click", () => toggleProjectEditPanel());
+  $("#detailProjectEditCancelButton").addEventListener("click", () => toggleProjectEditPanel(false));
+  $("#detailProjectEditForm").elements.budget.addEventListener("input", updateBudgetChangePreview);
+  $("#detailProjectEditForm").elements.status.addEventListener("change", updateBudgetChangePreview);
+  $$(".interactive-kpi").forEach((card) => {
+    const openTarget = () => focusDetailTarget(card.dataset.detailTarget);
+    card.addEventListener("click", openTarget);
+    card.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        openTarget();
+      }
+    });
+  });
   $("#detailCsvButton").addEventListener("click", () => {
     const projectId = state.detailProjectId || state.selectedProjectId;
     downloadText(
@@ -5303,6 +5763,40 @@ function bindEvents() {
     event.currentTarget.elements.movementDate.value = today();
   });
 
+  $("#detailProjectEditForm").addEventListener("submit", (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const data = formData(form);
+    const project = projectById(data.projectId);
+
+    if (!project) {
+      setMessage("Abre un proyecto para editarlo.", "warning");
+      return;
+    }
+
+    const nextBudget = numberValue(data.budget);
+    const previousBudget = numberValue(project.budget);
+    const budgetChanged = Math.abs(nextBudget - previousBudget) > 0.009;
+
+    if (
+      budgetChanged &&
+      !window.confirm(
+        `Esta modificacion cambiara los calculos financieros del proyecto.\nAnterior: ${money(previousBudget)}\nNuevo: ${money(nextBudget)}\nImpacto: ${money(nextBudget - previousBudget)}\nConfirmar?`,
+      )
+    ) {
+      return;
+    }
+
+    submitAction(
+      "update-project",
+      {
+        ...data,
+        budget: nextBudget,
+      },
+      "Proyecto actualizado.",
+    );
+  });
+
   $("#detailMovementForm").addEventListener("submit", (event) => {
     event.preventDefault();
     const projectId = state.detailProjectId || state.selectedProjectId;
@@ -5310,18 +5804,17 @@ function bindEvents() {
       return;
     }
     const data = formData(event.currentTarget);
+    const isEditing = Boolean(data.movementId);
     submitAction(
-      "create-movement",
+      isEditing ? "update-movement" : "create-movement",
       {
         ...data,
         projectId,
         amount: numberValue(data.amount),
       },
-      "Movimiento guardado.",
+      isEditing ? "Movimiento actualizado." : "Movimiento guardado.",
     );
-    event.currentTarget.reset();
-    event.currentTarget.elements.movementDate.value = today();
-    renderCategorySelects();
+    clearDetailMovementEditMode();
   });
 
   $("#detailStatusForm").addEventListener("submit", (event) => {
@@ -5397,21 +5890,22 @@ function bindEvents() {
       return;
     }
     const data = formData(event.currentTarget);
-    if (!validatePartnerParticipation(projectId, data.participation)) {
+    const isEditing = Boolean(data.partnerId);
+    if (!validatePartnerParticipation(projectId, data.participation, data.partnerId)) {
       renderPartnerParticipationControls();
       return;
     }
     submitAction(
-      "create-partner",
+      isEditing ? "update-partner" : "create-partner",
       {
         ...data,
         projectId,
         contribution: numberValue(data.contribution),
         participation: numberValue(data.participation),
       },
-      "Socio guardado.",
+      isEditing ? "Socio actualizado." : "Socio guardado.",
     );
-    event.currentTarget.reset();
+    clearDetailPartnerEditMode();
   });
 
   $("#inventoryForm").addEventListener("submit", (event) => {
@@ -5441,18 +5935,18 @@ function bindEvents() {
       return;
     }
     const data = formData(event.currentTarget);
+    const isEditing = Boolean(data.inventoryId);
     submitAction(
-      "create-inventory",
+      isEditing ? "update-inventory" : "create-inventory",
       {
         ...data,
         projectId,
         quantity: numberValue(data.quantity),
         unitCost: numberValue(data.unitCost),
       },
-      "Inventario actualizado.",
+      isEditing ? "Inventario editado." : "Inventario actualizado.",
     );
-    event.currentTarget.reset();
-    renderCategorySelects();
+    clearDetailInventoryEditMode();
   });
 
   $("#userForm").addEventListener("submit", async (event) => {

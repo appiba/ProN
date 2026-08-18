@@ -28,6 +28,8 @@ var HEADERS = {
     "objective",
     "createdAt",
     "updatedAt",
+    "initialBudget",
+    "lastBudgetReason",
   ],
   Movements: [
     "id",
@@ -127,6 +129,11 @@ function handlePayload_(payload) {
     return { ok: true, user: user, data: loadData_() };
   }
 
+  if (action === "update-project") {
+    updateProject_(payload);
+    return { ok: true, user: user, data: loadData_() };
+  }
+
   if (action === "create-movement") {
     createMovement_(payload);
     return { ok: true, user: user, data: loadData_() };
@@ -142,8 +149,18 @@ function handlePayload_(payload) {
     return { ok: true, user: user, data: loadData_() };
   }
 
+  if (action === "update-partner") {
+    updatePartner_(payload);
+    return { ok: true, user: user, data: loadData_() };
+  }
+
   if (action === "create-inventory") {
     createInventory_(payload);
+    return { ok: true, user: user, data: loadData_() };
+  }
+
+  if (action === "update-inventory") {
+    updateInventory_(payload);
     return { ok: true, user: user, data: loadData_() };
   }
 
@@ -305,11 +322,50 @@ function createProject_(payload) {
     timezone: text_(payload.timezone, CONFIG.TIMEZONE),
     status: text_(payload.status, "En revision"),
     budget: number_(payload.budget),
+    initialBudget: number_(payload.budget),
+    lastBudgetReason: text_(payload.reason, "Presupuesto inicial"),
     objective: text_(payload.objective, "Proyecto creado desde ProN."),
     createdAt: today_(),
     updatedAt: today_(),
   });
   audit_("Proyecto creado", name + " quedo en revision.", id);
+}
+
+function updateProject_(payload) {
+  var projectId = text_(payload.projectId);
+  var name = text_(payload.name);
+
+  if (!projectId || !name) {
+    throw new Error("Proyecto y nombre son obligatorios.");
+  }
+
+  var rows = readObjects_("Projects");
+  var current = rows.find(function (row) {
+    return String(row.id) === String(projectId);
+  });
+  var previousBudget = current ? number_(current.budget) : 0;
+  var initialBudget = current ? number_(current.initialBudget || current.budget) : number_(payload.budget);
+  var nextBudget = number_(payload.budget);
+
+  updateObjectById_("Projects", projectId, {
+    name: name,
+    type: text_(payload.type, "Proyecto personalizado"),
+    country: current ? text_(current.country, CONFIG.COUNTRY) : CONFIG.COUNTRY,
+    currency: current ? text_(current.currency, CONFIG.CURRENCY) : CONFIG.CURRENCY,
+    timezone: current ? text_(current.timezone, CONFIG.TIMEZONE) : CONFIG.TIMEZONE,
+    status: text_(payload.status, "En revision"),
+    budget: nextBudget,
+    initialBudget: initialBudget,
+    lastBudgetReason: text_(payload.reason),
+    objective: text_(payload.objective, "Proyecto actualizado desde ProN."),
+    createdAt: current ? text_(current.createdAt, today_()) : today_(),
+    updatedAt: today_(),
+  });
+  audit_(
+    "Proyecto actualizado",
+    name + ": presupuesto $" + previousBudget + " -> $" + nextBudget + ". " + text_(payload.reason),
+    projectId
+  );
 }
 
 function createMovement_(payload) {
@@ -391,15 +447,52 @@ function createPartner_(payload) {
     type: text_(payload.type, "Socio"),
     contribution: number_(payload.contribution),
     participation: participation,
-    status: "Activo",
+    status: text_(payload.status, "Activo"),
   });
   audit_("Socio agregado", name + " fue vinculado al proyecto.", projectId);
 }
 
-function projectParticipationTotal_(projectId) {
+function updatePartner_(payload) {
+  var partnerId = text_(payload.partnerId);
+  var projectId = text_(payload.projectId);
+  var name = text_(payload.name);
+
+  if (!partnerId || !projectId || !name) {
+    throw new Error("Socio, proyecto y nombre son obligatorios.");
+  }
+
+  var participation = number_(payload.participation);
+  var currentParticipation = projectParticipationTotal_(projectId, partnerId);
+
+  if (participation < 0) {
+    throw new Error("La participacion no puede ser negativa.");
+  }
+
+  if (currentParticipation + participation > 100.0001) {
+    throw new Error(
+      "La participacion supera 100%. Disponible: " +
+        Math.max(0, 100 - currentParticipation) +
+        "%."
+    );
+  }
+
+  updateObjectById_("Partners", partnerId, {
+    projectId: projectId,
+    name: name,
+    type: text_(payload.type, "Socio"),
+    contribution: number_(payload.contribution),
+    participation: participation,
+    status: text_(payload.status, "Activo"),
+  });
+  audit_("Socio actualizado", name + " quedo en " + text_(payload.status, "Activo") + ".", projectId);
+}
+
+function projectParticipationTotal_(projectId, excludePartnerId) {
   return readObjects_("Partners")
     .filter(function (partner) {
-      return String(partner.projectId) === String(projectId);
+      return String(partner.projectId) === String(projectId) &&
+        String(partner.id) !== String(excludePartnerId || "") &&
+        String(partner.status || "Activo") !== "Retirado";
     })
     .reduce(function (sum, partner) {
       return sum + number_(partner.participation);
@@ -421,9 +514,29 @@ function createInventory_(payload) {
     category: text_(payload.category, "Inventario"),
     quantity: Math.max(0, Math.round(number_(payload.quantity))),
     unitCost: Math.max(0, number_(payload.unitCost)),
-    status: "Disponible",
+    status: text_(payload.status, "Disponible"),
   });
   audit_("Inventario agregado", item + " quedo registrado.", projectId);
+}
+
+function updateInventory_(payload) {
+  var inventoryId = text_(payload.inventoryId);
+  var projectId = text_(payload.projectId);
+  var item = text_(payload.item);
+
+  if (!inventoryId || !projectId || !item) {
+    throw new Error("Inventario, proyecto e item son obligatorios.");
+  }
+
+  updateObjectById_("Inventory", inventoryId, {
+    projectId: projectId,
+    item: item,
+    category: text_(payload.category, "Inventario"),
+    quantity: Math.max(0, Math.round(number_(payload.quantity))),
+    unitCost: Math.max(0, number_(payload.unitCost)),
+    status: text_(payload.status, "Disponible"),
+  });
+  audit_("Inventario actualizado", item + " fue actualizado.", projectId);
 }
 
 function createUser_(payload) {
@@ -548,6 +661,8 @@ function mergeLocalData_(payload) {
       timezone: text_(row.timezone, CONFIG.TIMEZONE),
       status: text_(row.status, "En revision"),
       budget: number_(row.budget),
+      initialBudget: number_(row.initialBudget || row.budget),
+      lastBudgetReason: text_(row.lastBudgetReason),
       objective: text_(row.objective, "Proyecto creado desde ProN."),
       createdAt: text_(row.createdAt, today_()),
       updatedAt: text_(row.updatedAt, today_()),
@@ -639,6 +754,8 @@ function loadData_() {
         timezone: row.timezone,
         status: row.status,
         budget: number_(row.budget),
+        initialBudget: number_(row.initialBudget || row.budget),
+        lastBudgetReason: row.lastBudgetReason || "",
         objective: row.objective,
         createdAt: row.createdAt,
         updatedAt: row.updatedAt,

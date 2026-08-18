@@ -142,7 +142,14 @@ test("ships the GitHub Pages and Apps Script integration", async () => {
   assert.match(index, /Crear usuario/);
   assert.match(index, /Usuario de acceso/);
   assert.match(index, /Clave de acceso/);
-  assert.match(index, /20260807-vinilos-socios/);
+  assert.match(index, /20260807-editable-projects/);
+  assert.match(index, /detailEditProjectButton/);
+  assert.match(index, /detailProjectEditForm/);
+  assert.match(index, /budgetChangePreview/);
+  assert.match(index, /interactive-kpi/);
+  assert.match(index, /detailMovementCancelButton/);
+  assert.match(index, /detailPartnerCancelButton/);
+  assert.match(index, /detailInventoryCancelButton/);
   assert.match(index, /eventControlPanel/);
   assert.match(index, /eventScorecards/);
   assert.match(index, /eventBudgetBody/);
@@ -162,7 +169,16 @@ test("ships the GitHub Pages and Apps Script integration", async () => {
     /Informe TXT|Descargar JSON|Google Sheet|Sincronizar Sheets|Apps Script no respondio|Base de datos local activa|Failed to fetch/i,
   );
   assert.match(pages, /delete-project/);
+  assert.match(pages, /update-project/);
   assert.match(pages, /update-movement/);
+  assert.match(pages, /update-partner/);
+  assert.match(pages, /update-inventory/);
+  assert.match(pages, /editDetailMovement/);
+  assert.match(pages, /editDetailPartner/);
+  assert.match(pages, /editDetailInventory/);
+  assert.match(pages, /retireDetailPartner/);
+  assert.match(pages, /projectInitialBudget/);
+  assert.match(pages, /lastBudgetReason/);
   assert.match(pages, /editAdminMovement/);
   assert.match(pages, /clearAdminEditMode/);
   assert.match(pages, /downloadProjectReport/);
@@ -244,7 +260,12 @@ test("ships the GitHub Pages and Apps Script integration", async () => {
   assert.match(appsScript, /deleteProject_/);
   assert.match(appsScript, /mergeLocalData_/);
   assert.match(appsScript, /upsertObjects_/);
+  assert.match(appsScript, /updateProject_/);
   assert.match(appsScript, /updateMovement_/);
+  assert.match(appsScript, /updatePartner_/);
+  assert.match(appsScript, /updateInventory_/);
+  assert.match(appsScript, /initialBudget/);
+  assert.match(appsScript, /lastBudgetReason/);
   assert.match(appsScript, /userByCredentials_/);
   assert.match(appsScript, /passwordHash/);
   assert.match(appsScript, /partnerId/);
