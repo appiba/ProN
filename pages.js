@@ -2087,16 +2087,7 @@ function isOutdatedBackendResponse(result) {
     return false;
   }
 
-  if (result.version) {
-    return result.version !== REQUIRED_APPS_SCRIPT_VERSION;
-  }
-
-  return Boolean(
-    result.app === "ProN" ||
-      result.sheetId ||
-      hasLegacyCentralRows(result.data) ||
-      (result.data?.settings && result.data.settings.cleanStartVersion !== CLEAN_START_VERSION),
-  );
+  return Boolean(result.version && result.version !== REQUIRED_APPS_SCRIPT_VERSION);
 }
 
 function isGeneratedProjectId(projectId) {
