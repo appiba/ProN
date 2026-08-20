@@ -2616,6 +2616,22 @@ function el(tag, attrs = {}, children = []) {
 function replaceChildren(selector, children) {
   const node = $(selector);
   node.replaceChildren(...children);
+  if (node.tagName === "TBODY") {
+    applyResponsiveTableLabels();
+  }
+}
+
+function applyResponsiveTableLabels() {
+  $$("table").forEach((table) => {
+    const labels = [...table.querySelectorAll("thead th")].map((heading) => heading.textContent.trim());
+    [...table.querySelectorAll("tbody tr")].forEach((row) => {
+      [...row.children].forEach((cell, index) => {
+        if (cell.tagName === "TD" && labels[index]) {
+          cell.dataset.label = labels[index];
+        }
+      });
+    });
+  });
 }
 
 function render() {
@@ -2634,6 +2650,7 @@ function render() {
   renderReports();
   renderSettings();
   renderProjectDetail();
+  applyResponsiveTableLabels();
 }
 
 function renderMetrics() {
@@ -6209,8 +6226,29 @@ function confirmDelete(question, action, payload, successMessage) {
   return true;
 }
 
+function setMobileMenu(open) {
+  document.body.classList.toggle("mobile-nav-open", open);
+  const button = $("#mobileMenuButton");
+  if (button) {
+    button.setAttribute("aria-expanded", open ? "true" : "false");
+  }
+}
+
+function closeMobileMenu() {
+  setMobileMenu(false);
+}
+
 function bindEvents() {
   $("#loginForm").addEventListener("submit", login);
+  $("#mobileMenuButton")?.addEventListener("click", () =>
+    setMobileMenu(!document.body.classList.contains("mobile-nav-open")),
+  );
+  $("#mobileMenuOverlay")?.addEventListener("click", closeMobileMenu);
+  window.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      closeMobileMenu();
+    }
+  });
   $("#refreshButton").addEventListener("click", refreshData);
   $("#exportTopButton").addEventListener("click", downloadScopeReport);
   $("#downloadScopeButton").addEventListener("click", downloadScopeReport);
@@ -6320,6 +6358,7 @@ function bindEvents() {
   $$("nav button").forEach((button) => {
     button.addEventListener("click", () => {
       setActiveView(button.dataset.tab);
+      closeMobileMenu();
     });
   });
 

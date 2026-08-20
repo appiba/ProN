@@ -99,12 +99,16 @@ test("keeps private bootstrap credentials out of app source", async () => {
 test("ships the GitHub Pages and Apps Script integration", async () => {
   const index = await readFile(new URL("../index.html", import.meta.url), "utf8");
   const pages = await readFile(new URL("../pages.js", import.meta.url), "utf8");
+  const styles = await readFile(new URL("../pages.css", import.meta.url), "utf8");
   const appsScript = await readFile(
     new URL("../google-apps-script/Code.gs", import.meta.url),
     "utf8",
   );
 
   assert.match(index, /ERP Dashboard/);
+  assert.match(index, /viewport-fit=cover/);
+  assert.match(index, /mobileMenuButton/);
+  assert.match(index, /mobileMenuOverlay/);
   assert.match(pages, /AKfycbzf1TjxIBrBNJ6fTY5NNciAlWCl0PFKYgCpRXcdRg2S9aYKjMqDxeVCgC1JlcZet8iLNA/);
   assert.match(pages, /function jsonpRequest/);
   assert.match(pages, /LOCAL_DB_KEY/);
@@ -142,7 +146,7 @@ test("ships the GitHub Pages and Apps Script integration", async () => {
   assert.match(index, /Crear usuario/);
   assert.match(index, /Usuario de acceso/);
   assert.match(index, /Clave de acceso/);
-  assert.match(index, /20260818-project-isolation/);
+  assert.match(index, /20260820-mobile-responsive/);
   assert.doesNotMatch(index, /20260807-vinilos-socios|20260807-editable-projects|20260807-editable-sync|20260818-budget-inline|20260818-partner-sync|20260818-central-sync|20260818-central-status|20260818-central-save/);
   assert.match(index, /detailEditProjectButton/);
   assert.match(index, /detailBudgetInlineForm/);
@@ -273,6 +277,13 @@ test("ships the GitHub Pages and Apps Script integration", async () => {
   assert.match(pages, /validatePartnerParticipation/);
   assert.match(pages, /Capital real socios/);
   assert.match(pages, /partner-card-head/);
+  assert.match(pages, /setMobileMenu/);
+  assert.match(pages, /applyResponsiveTableLabels/);
+  assert.match(styles, /mobile-nav-open/);
+  assert.match(styles, /100dvh/);
+  assert.match(styles, /max-width: 1100px/);
+  assert.match(styles, /max-width: 767px/);
+  assert.match(styles, /max-width: 480px/);
   assert.doesNotMatch(index, /Correo de invitacion|Enviar invitacion|Invitar usuario/i);
   assert.match(appsScript, /function doGet/);
   assert.match(appsScript, /function doPost/);

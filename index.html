@@ -2,14 +2,17 @@
 <html lang="es">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
     <title>ProN | ERP Dashboard</title>
     <meta
       name="description"
       content="ERP dashboard en espanol para negocios, proyectos, eventos, finanzas, socios, inventario y usuarios."
     />
     <link rel="icon" href="public/favicon.svg" />
-    <link rel="stylesheet" href="pages.css?v=20260818-project-isolation" />
+    <link rel="stylesheet" href="pages.css?v=20260820-mobile-responsive" />
   </head>
   <body>
     <section id="loginScreen" class="login-screen">
@@ -47,7 +50,7 @@
     </section>
 
     <main id="dashboard" class="shell is-hidden">
-      <aside class="sidebar">
+      <aside id="sidebar" class="sidebar" aria-label="Menu principal">
         <div class="brand">
           <span>PN</span>
           <div>
@@ -74,9 +77,26 @@
           <button id="logoutButton" class="ghost-button" type="button">Salir</button>
         </div>
       </aside>
+      <button
+        id="mobileMenuOverlay"
+        class="mobile-menu-overlay"
+        type="button"
+        aria-label="Cerrar menu"
+      ></button>
 
       <section class="workspace">
         <header class="topbar">
+          <button
+            id="mobileMenuButton"
+            class="mobile-menu-button"
+            type="button"
+            aria-controls="sidebar"
+            aria-expanded="false"
+          >
+            <span class="mobile-menu-logo">PN</span>
+            <span>ProN</span>
+            <b aria-hidden="true">☰</b>
+          </button>
           <div>
             <p class="eyebrow">Panel general</p>
             <h2>ProN para negocios, proyectos y eventos</h2>
@@ -975,6 +995,6 @@
       </section>
     </main>
 
-    <script src="pages.js?v=20260818-project-isolation"></script>
+    <script src="pages.js?v=20260820-mobile-responsive"></script>
   </body>
 </html>
